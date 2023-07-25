@@ -1,0 +1,15 @@
+requests
+colorama
+argparse
+pyzipper
+urllib3
+hashlib
+openai
+tqdm
+elasticsearch
+regex
+yara
+slack_sdk
+discord-webhook
+halo
+getpass2
