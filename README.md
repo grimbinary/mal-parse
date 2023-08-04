@@ -23,6 +23,8 @@ Preferences File: The script uses a preferences file to store user settings, suc
 
 Interactive and Non-Interactive Modes: The script supports both interactive and non-interactive modes. In interactive mode, the script prompts the user for inputs. In non-interactive mode, the script uses the preferences file for inputs, allowing it to be used in automated workflows.
 
+Built-in Admin Dashboard: This script will spin up a Python Django dashboard. See README-Dashboard.md. 
+
 -> Motivation:
 The inception of this script was motivated by the need for a more efficient and automated approach to threat analysis. By leveraging APIs and integrating with popular communication platforms, this script aims to make threat analysis more accessible and collaborative. The integration with YARAify, ThreatFox, and Kibana further enhances its capabilities, providing a comprehensive tool for open-source threat analysis. The preferences file and the interactive/non-interactive modes add flexibility, making the script adaptable to different use cases and workflows so please adjust it to your needs. 
 
