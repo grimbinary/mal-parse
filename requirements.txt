@@ -11,8 +11,4 @@ slack-sdk
 discord-webhook
 Django
 djangorestframework
-<<<<<<< HEAD
 psycopg2-binary
-=======
-psycopg2-binary
->>>>>>> b3954a46605f35768cef627e653bc07333794e8c
