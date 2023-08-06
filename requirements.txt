@@ -13,3 +13,8 @@ slack_sdk
 discord-webhook
 halo
 getpass2
+django
+djangorestframework
+numpy
+pandas
+matplotlib

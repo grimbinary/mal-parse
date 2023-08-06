@@ -11,8 +11,8 @@
 # Date: 2023-07-20                                                                                                  # 
 # Purpose: To make open source malware detection and analysis more portarable and easy                              #
 # To Do:                                                                                                            #
-# 1) Dashboard                                                                                                      #   
-# 2)                                                                                                                 #
+# Integrate malware sandbox engine                                                                                  #   
+#                                                                                                                   #
 #####################################################################################################################
 
 import os
@@ -41,6 +41,7 @@ from elasticsearch import Elasticsearch
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from discord_webhook import DiscordWebhook
+
 
 # Color Codes
 gold = Fore.YELLOW
@@ -71,7 +72,6 @@ else:
     else:
         print("Running in non-interactive mode due to setting in preferences.conf.")
 
-interactive_mode = config.get('Preferences', 'interactive_mode', fallback=True)
 
 def get_user_choice(prompt):
     while True:
@@ -159,22 +159,27 @@ signal.signal(signal.SIGINT, signal_handler)
 print(f"{green}Stage 1/9{white}")
 
 # Run data processing commands
-os.chdir(os.path.expanduser('~/Downloads'))
+
 print(f"{white}Making room for new samples...{white}")
 
-execute_command('rm malware/hashes.json')
-execute_command('rm malware/samples.json')
-execute_command('rm malware/yarGen/rules.yar')
-execute_command('rm ~/Downloads/investigate/report.json')
-execute_command('rm ~/Downloads/investigate/formatted_report.json')
-execute_command('rm ~/Downloads/investigate/hashes.json')
+execute_command('rm ~/mal-parse/malware/hashes.json')
+execute_command('rm ~/mal-parse/malware/samples.json')
+execute_command('rm ~/mal-parse/malware/yarGen/rules.yar')
+execute_command('rm ~/mal-parse/investigate/report.json')
+execute_command('rm ~/mal-parse/investigate/formatted_report.json')
+execute_command('rm ~/mal-parse/investigate/hashes.json')
+execute_command('rm ~/mal-parse/admin/static/threats.json')
+execute_command('rm ~/mal-parse/admin/static/new_threats.json')
+execute_command('rm ~/mal-parse/admin/static/daily_threats.json')
+execute_command('rm ~/mal-parse/admin/static/report.json')
+execute_command('rm ~/mal-parse/admin/formatted_report.json')
 
 print(f"{white}Cleaning up...{white}")
-execute_command('rm -rf malware/samples/')
-execute_command('rm -rf ~/Downloads/investigate/sample_hashes/')
-execute_command('rm -rf ~/Downloads/investigate/reduced_sample_files/')
-execute_command('rm -rf ~/Downloads/investigate/ai_report/')
-execute_command('rm -rf ~/Downloads/investigate/threat_analysis/')
+execute_command('rm -rf ~/mal-parse/malware/samples/')
+execute_command('rm -rf ~/mal-parse/investigate/sample_hashes/')
+execute_command('rm -rf ~/mal-parse/investigate/reduced_sample_files/')
+execute_command('rm -rf ~/mal-parse/investigate/ai_report/')
+execute_command('rm -rf ~/mal-parse/investigate/threat_analysis/')
 
 time.sleep(5)
 print(f"{white}Running data processing commands...{white}")
@@ -236,36 +241,42 @@ headers = {'API-KEY': ''}
 # Hardcode the input file name
 input_file = 'samples.json'
 
-with open(input_file) as json_file:
-    data = json.load(json_file)
-    num_samples = len(data)
-    with tqdm(total=num_samples, desc="Downloading", unit="sample") as pbar:
-        for index, sample in enumerate(data, start=1):
-            sha256_hash = sample.get('sha256_hash')
-            if sha256_hash:
-                response = requests.post('https://mb-api.abuse.ch/api/v1/', data={'query': 'get_file', 'sha256_hash': sha256_hash}, timeout=15, headers=headers, allow_redirects=True)
+try:
+    with open(input_file) as json_file:
+        data = json.load(json_file)
+except FileNotFoundError:
+    print("Mal-Parse ran into an unknown error. Please try again.")
+    sys.exit(1)  # Exit the script
 
-                if 'file_not_found' in response.text:
-                    print(f"Error: File not found for hash {sha256_hash}")
-                    continue
+num_samples = len(data)
+with tqdm(total=num_samples, desc="Downloading", unit="sample") as pbar:
+    for index, sample in enumerate(data, start=1):
+        sha256_hash = sample.get('sha256_hash')
+        if sha256_hash:
+            response = requests.post('https://mb-api.abuse.ch/api/v1/', data={'query': 'get_file', 'sha256_hash': sha256_hash}, timeout=15, headers=headers, allow_redirects=True)
 
-                with open(f"samples/{sha256_hash}.zip", 'wb') as file:
-                    file.write(response.content)
+            if 'file_not_found' in response.text:
+                print(f"Error: File not found for hash {sha256_hash}")
+                continue
 
-                try:
-                    with pyzipper.AESZipFile(f"samples/{sha256_hash}.zip") as zf:
-                        zf.pwd = ZIP_PASSWORD
-                        zf.extractall("samples")
+            with open(f"samples/{sha256_hash}.zip", 'wb') as file:
+                file.write(response.content)
 
-                    pbar.set_postfix({"Progress": f"{index}/{num_samples}"})
-                    pbar.update(1)
+            try:
+                with pyzipper.AESZipFile(f"samples/{sha256_hash}.zip") as zf:
+                    zf.pwd = ZIP_PASSWORD
+                    zf.extractall("samples")
 
-                    print(f"Sample \"{sha256_hash}\" downloaded and unpacked.")
+                pbar.set_postfix({"Progress": f"{index}/{num_samples}"})
+                pbar.update(1)
 
-                except pyzipper.BadZipFile:
-                    print(f"Error: File for hash {sha256_hash} is not a zip file. Skipping.")
+                print(f"Sample \"{sha256_hash}\" downloaded and unpacked.")
+
+            except pyzipper.BadZipFile:
+                print(f"Error: File for hash {sha256_hash} is not a zip file. Skipping.")
 
 print("Download completed. Please wait.")
+
 
 # -----------------------------------------------------> END PYTHON3 COMMAND <-------------------------------------------------------------
 
@@ -273,7 +284,7 @@ time.sleep(30)
 os.chdir('samples/')
 print(f"{gold}Removing unwanted file types...{white}")
 execute_command('rm *.zip')
-execute_command('rm *.tar')
+# execute_command('rm *.tar')
 time.sleep(5)
 os.chdir('..')
 
@@ -431,9 +442,9 @@ time.sleep(3)
 #execute_command('python3 submit_to_yaraify.py')
 time.sleep(5)
 print(f"{gold}Please Wait...{white}")
-os.chdir(os.path.expanduser('~/Downloads/malware'))
-execute_command('cp hashes.json ~/Downloads/investigate')
-os.chdir(os.path.expanduser('~/Downloads/investigate'))
+os.chdir(os.path.expanduser('~/mal-parse/malware'))
+execute_command('cp hashes.json ~/mal-parse/investigate')
+os.chdir(os.path.expanduser('~/mal-parse/investigate'))
 time.sleep(3)
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
@@ -543,7 +554,7 @@ def send_to_kibana(ip_address, port, file_name):
     subprocess.run(["clear"])
     time.sleep(5)
     # Read the content from the original report file
-    os.chdir(os.path.expanduser('~/Downloads/investigate'))
+    os.chdir(os.path.expanduser('~/mal-parse/investigate'))
     
     time.sleep(5)
     print("Transferring now...")
@@ -768,17 +779,22 @@ samples = report_data.get('data', [])
 
 # Iterate over each sample
 for sample in samples:
-    sha256_hash = sample['sha256_hash']
-    # Create a new file for each sample
-    file_name = f"{sha256_hash}.json"
-    file_path = os.path.join(folder_name, file_name)
-    with open(file_path, 'w') as f:
-        # Write the sample to the file
-        json.dump(sample, f, indent=4)
+    try:
+        sha256_hash = sample['sha256_hash']
+        # Create a new file for each sample
+        file_name = f"{sha256_hash}.json"
+        file_path = os.path.join(folder_name, file_name)
+        with open(file_path, 'w') as f:
+            # Write the sample to the file
+            json.dump(sample, f, indent=4)
 
-    print(f"Sample {sha256_hash} saved to file: {file_path}")
+        print(f"Sample {sha256_hash} saved to file: {file_path}")
+    except Exception as e:
+        print(f"Error while processing sample {sample}. Error: {e}")
+        continue
 
 print(f"Files have been condensed. Shortening files....")
+
 
 # Function to truncate text to a specified length
 def truncate_text(text, length):
@@ -828,7 +844,7 @@ print(f"Files have been shortened.")
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
 time.sleep(5)
 print(f"{gold}Analyzing...{white}")
-os.chdir(os.path.expanduser('~/Downloads/investigate/'))
+os.chdir(os.path.expanduser('~/mal-parse/investigate/'))
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
@@ -906,7 +922,7 @@ else:
 
 time.sleep(5)
 print(f"{gold}Please Wait...{white}")
-os.chdir(os.path.expanduser('~/Downloads/investigate'))
+os.chdir(os.path.expanduser('~/mal-parse/investigate'))
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 #execute_command('./report.sh')
@@ -987,7 +1003,7 @@ print(f"{green}Threat analysis completed.{white}")
 
 print(f"{white}Please Wait...{white}")
 
-os.chdir(os.path.expanduser('~/Downloads/investigate/threat_analysis/'))
+os.chdir(os.path.expanduser('~/mal-parse/investigate/threat_analysis/'))
 os.system("touch report.txt")
 
 with open('report.txt', 'w') as outfile:
@@ -1000,13 +1016,26 @@ with open('report.txt', 'w') as outfile:
 if platform_choice == 'y':
     send_to_platform(platform, slack_token, slack_channel_id, discord_webhook_url)
 
-os.chdir('..')
 
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
 
+# -----------------------------------------------------> START PYTHON3 COMMANDS HERE <-----------------------------------------------------
 time.sleep(5)
 os.system('clear')
+
+os.chdir(os.path.expanduser('~/mal-parse/investigate/threat_analysis/'))
+#Rename
+if os.path.exists("report.txt"):
+    os.rename("report.txt", "new_threats.json")
+
+os.chdir(os.path.expanduser('~/mal-parse/'))
+
+#print(f"{green}Restarting At 8AM 24/UTC.{green}")"
 print(f"{green}Done.{green}")
 print(f"{green}All stages met. Thank you for using Mal-Parse!{green}")
+print(f"{green}To start the dashboard, please navigate to the /admin/ directory and execute 'start-dashboard.py'{green}")
+
+# -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
+
 
 #print(f"{green}Restarting At 8AM 24/UTC.{green}")
