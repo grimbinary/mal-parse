@@ -9,3 +9,6 @@ tqdm
 elasticsearch
 slack-sdk
 discord-webhook
+Django
+djangorestframework
+psycopg2-binary
