@@ -6,7 +6,7 @@
 
 // Installation Steps:
 
--> Navigate to the project directory in your terminal (or run mal-parse.py in non-interactive mode, see README.md)
+-> Navigate to the admin directory in your terminal (or simply run start-dashboard.py in the admin directory to automate the following)
 
 -> To set up the necessary database structures, run the following commands in your terminal:
 
