@@ -8,7 +8,7 @@
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2023-07-20                                                                                                  # 
+# Date: 2023-08-10                                                                                                  # 
 # Purpose: To make open source malware detection and analysis more portarable and easy                              #
 # To Do:                                                                                                            #
 # Integrate malware sandbox engine                                                                                  #   
