@@ -902,22 +902,6 @@ def ai_analysis_execution(api_key, engine_choice, prompt):
     # Close the progress bar
     progress_bar.close()
     print("Done.")
-
-if kibana_transmission_choice.lower() == 'y':
-    if interactive_mode:
-        ip_address = input("Please enter the IP address of your Kibana instance: ")
-        port = input("Please enter the port (default is 9200): ") or "9200"
-        kibana_file_name = input("Please enter the name of the file (default is 'threat_analysis_grimbinary_todaysdate'): ") or f'threat_analysis_grimbinary_{datetime.now().strftime("%Y-%m-%d")}'
-    else:
-        ip_address = config.get('Preferences', 'kibana_ip_address', fallback=None)
-        port = config.get('Preferences', 'kibana_port', fallback=None)
-        kibana_file_name = config.get('Preferences', 'kibana_file_name', fallback=None)
-        if kibana_file_name == 'threat_analysis_grimbinary_todaysdate':
-            kibana_file_name = f'threat_analysis_grimbinary_{datetime.now().strftime("%Y-%m-%d")}'
-
-    send_to_kibana(ip_address, port, kibana_file_name)
-else:
-    print(f"Skipping Kibana transmission...")
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
 
 time.sleep(5)
