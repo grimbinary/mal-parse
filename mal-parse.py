@@ -8,8 +8,8 @@
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2024-02-21                                                                                                  # 
-# Purpose: To make open source malware detection and analysis portarable and easy                                   #
+# Date: 2023-08-10                                                                                                  # 
+# Purpose: To make open source malware detection and analysis more portarable and easy                              #
 # To Do:                                                                                                            #
 # Integrate malware sandbox engine                                                                                  #   
 #                                                                                                                   #
@@ -101,7 +101,7 @@ def create_directory(directory):
 if interactive_mode:
     db_update = get_user_choice("Would you like to update the DB? (y/n) -> ")
     yaraify_transmission_choice = get_user_choice("Would you like to send your YARA rules to YARAify? (y/n) -> ")
-    kibana_transmission_choice = get_user_choice("Would you like to send your data to ElasticSearch? (y/n) -> ")
+    kibana_transmission_choice = get_user_choice("Would you like to send your data to ElasticSearch? (y/n) -> ") # We are obviously sending this to elasticsearch but kibana is faster to spell
     threatfox_transmission_choice = get_user_choice("Would you like to send your data to ThreatFox? (y/n) -> ")
     threatfox_api_key = input("Please enter your ThreatFox API key: ") if threatfox_transmission_choice.lower() == 'y' else None
     vt_api_key = input("Please enter your VirusTotal API key so that you can receive TTP analysis based on the samples: ")
