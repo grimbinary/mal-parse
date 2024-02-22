@@ -1,5 +1,5 @@
 # mal-parse
-A helpful malware analysis toolkit made by @grimbinary. Simply update the preferences.conf with your unique preferences and run with 'python3 mal-parse.py'
+A helpful malware analysis toolkit made by @grimbinary. Simply update the preferences.conf with your unique preferences and run with 'python3 mal-parse.py -h'
 
 # Overview: 
 This Python script is a comprehensive tool designed to automate the process of performing live threat analysis on 100 malware samples. It integrates with multiple platforms and APIs, including VirusTotal, YARAify, ThreatFox, and Kibana, to provide a holistic view of the threats lingering within the samples. The motivation behind this script is to streamline the process of threat analysis, making it more efficient and accessible to security professionals and enthusiasts alike. Check out my other project called 'quickcrowd' to get up and going faster!
