@@ -2,7 +2,7 @@
 A helpful malware analysis toolkit made by @grimbinary. Simply update the preferences.conf with your unique preferences and run with 'python3 mal-parse.py -h'
 
 # Overview: 
-This Python script is a comprehensive tool designed to automate the process of performing live threat analysis on 100 malware samples. It integrates with multiple platforms and APIs, including VirusTotal, YARAify, ThreatFox, and Kibana, to provide a holistic view of the threats lingering within the samples. The motivation behind this script is to streamline the process of threat analysis, making it more efficient and accessible to security professionals and enthusiasts alike. Check out my other project called 'quickcrowd' to get up and going faster!
+This Python script is a comprehensive tool designed to automate the process of performing live threat analysis on 100 Windows-based malware samples. It integrates with multiple platforms and APIs, including VirusTotal, YARAify, ThreatFox, and Kibana, to provide a holistic view of the threats lingering within the samples. The motivation behind this script is to streamline the process of threat analysis, making it more efficient and accessible to security professionals and enthusiasts alike. Check out my other project called 'quickcrowd' to get up and going faster!
 
 # Features:
 -> VirusTotal API Integration (required): The script uses the VirusTotal API to fetch threat analysis data for given hashes. This involves using its the MITRE ATT&CK framework data, to provide you with a detailed view of the tactics, techniques, and procedures (TTPs) used by the threats. You can get this API key for free, although the limit requests will be capped unless you get premium. 
