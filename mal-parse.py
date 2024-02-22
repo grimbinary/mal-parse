@@ -8,8 +8,8 @@
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2023-08-10                                                                                                  # 
-# Purpose: To make open source malware detection and analysis more portarable and easy                              #
+# Date: 2024-02-21                                                                                                  # 
+# Purpose: To make open source malware detection and analysis portarable and easy                                   #
 # To Do:                                                                                                            #
 # Integrate malware sandbox engine                                                                                  #   
 #                                                                                                                   #
@@ -43,7 +43,6 @@ from slack_sdk.errors import SlackApiError
 from discord_webhook import DiscordWebhook
 
 
-# Color Codes
 gold = Fore.YELLOW
 green = Fore.GREEN
 white = Fore.WHITE
@@ -57,10 +56,8 @@ if __name__ == "__main__":
 
     config = configparser.ConfigParser()
 
-    # Read the preferences file
     config.read('preferences.conf')
 
-    # Check if the user provided the '--non-interactive' argument
 if args.non_interactive:
     interactive_mode = False
     print("Running in non-interactive mode due to --non-interactive argument.")
@@ -104,7 +101,7 @@ def create_directory(directory):
 if interactive_mode:
     db_update = get_user_choice("Would you like to update the DB? (y/n) -> ")
     yaraify_transmission_choice = get_user_choice("Would you like to send your YARA rules to YARAify? (y/n) -> ")
-    kibana_transmission_choice = get_user_choice("Would you like to send your data to Kibana? (y/n) -> ")
+    kibana_transmission_choice = get_user_choice("Would you like to send your data to ElasticSearch? (y/n) -> ")
     threatfox_transmission_choice = get_user_choice("Would you like to send your data to ThreatFox? (y/n) -> ")
     threatfox_api_key = input("Please enter your ThreatFox API key: ") if threatfox_transmission_choice.lower() == 'y' else None
     vt_api_key = input("Please enter your VirusTotal API key so that you can receive TTP analysis based on the samples: ")
@@ -135,7 +132,7 @@ else:
     threatfox_transmission_choice = config.get('ThreatFox', 'threatfox_transmission', fallback='n')
     threatfox_api_key = config.get('Threatfox', 'threatfox_api_key', fallback=None)
     vt_api_key = config.get('Virustotal', 'vt_api_key', fallback=None)
-    ai_analysis_choice = config.get('AI Analysis', 'ai_analysis', fallback='n')
+    ai_analysis_choice = config.get('OpenAI', 'ai_analysis', fallback='n')
     openai_api_key = config.get('OpenAI', 'openai_api_key', fallback=None)
     engine_choice = config.get('OpenAI', 'engine_choice', fallback=None)
     prompt = config.get('OpenAI', 'prompt', fallback=None)
@@ -143,22 +140,19 @@ else:
     if platform_choice == 'y':
         platform = config.get('Platform', 'platform', fallback=None).lower()
         if platform == 'discord':
-            discord_webhook_url = config.get('Preferences', 'discord_webhook_url', fallback=None)
+            discord_webhook_url = config.get('Platform', 'discord_webhook_url', fallback=None)
         elif platform == 'slack':
-            slack_token = config.get('Preferences', 'slack_token', fallback=None)
-            slack_channel_id = config.get('Preferences', 'slack_channel_id', fallback=None)
+            slack_token = config.get('Platform', 'slack_token', fallback=None)
+            slack_channel_id = config.get('Platform', 'slack_channel_id', fallback=None)
 
 def signal_handler(sig, frame):
         print('KeyboardInterrupt detected. Cancelling script...')
         sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 
-# Clear screen
 
-#Begin 
-print(f"{green}Stage 1/9{white}")
-
-# Run data processing commands
+#Stage 1: Preparation 
+print(f"{green}Stage 1/9: Preparing Environment{white}")
 
 print(f"{white}Making room for new samples...{white}")
 
@@ -187,29 +181,20 @@ print(f"{white}Please wait...{white}")
 time.sleep(5)
 create_directory('malware')
 create_directory('investigate')
-#execute_command(cp get_and_cut_windows.sh malware/)
 
-#execute_command('sudo cp get_and_cut_windows.sh malware/')
-
-# Create a new directory "samples/"
 os.chdir('malware/')
 os.makedirs("samples", exist_ok=True)
-#execute_command('./get_and_cut_windows.sh')
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
-# Make a POST request
 url = "https://mb-api.abuse.ch/api/v1/"
 data = {"query": "get_file_type", "file_type": "exe", "limit": "100"}
 response = requests.post(url, data=data)
 with open("hashes.json", "w") as file:
     file.write(response.text)
 
-# Rename "index.html" to "hashes.json" (if it exists)
 if os.path.exists("index.html"):
     os.rename("index.html", "hashes.json")
-
-# Extract specific fields from hashes.json and save to samples.json
 
 try:
     with open("hashes.json") as file:
@@ -227,7 +212,7 @@ except json.JSONDecodeError:
 print(f"{white}Running puller.py with samples.json. Saving malicious files to samples directory{white}")
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
-#execute_command('python3 puller.py -i samples.json')
+
 def check_sha256(s):
     if s == "": 
         return
@@ -238,7 +223,7 @@ def check_sha256(s):
 ZIP_PASSWORD = b'infected'
 headers = {'API-KEY': ''}
 
-# Hardcode the input file name
+# Hardcoded input file name
 input_file = 'samples.json'
 
 try:
@@ -246,7 +231,7 @@ try:
         data = json.load(json_file)
 except FileNotFoundError:
     print("Mal-Parse ran into an unknown error. Please try again.")
-    sys.exit(1)  # Exit the script
+    sys.exit(1) 
 
 num_samples = len(data)
 with tqdm(total=num_samples, desc="Downloading", unit="sample") as pbar:
@@ -282,19 +267,19 @@ print("Download completed. Please wait.")
 
 time.sleep(30)
 os.chdir('samples/')
-print(f"{gold}Removing unwanted file types...{white}")
+print(f"{green}Removing unwanted file types...{white}")
 execute_command('rm *.zip')
-# execute_command('rm *.tar')
+
 time.sleep(5)
 os.chdir('..')
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-------------------------------------------------------------
 
-# Clear screen
 os.system('clear')
-print(f"{green}Stage 2/9{white}")
 
-#Begin 
+# Stage 2: Malware Sample Collection
+print(f"{green}Stage 2/9: Collecting Malware Samples{white}")
+
 def yarGen_execution(first_time=False):
 
     print(f"{gold}Checking to see if unzip is installed..{white}.")
@@ -323,8 +308,6 @@ def yarGen_execution(first_time=False):
     print(f"{gold}Double checking to see if pip is installed...{green}")
 
     pip_installed = execute_quiet_command(['which', 'pip'])
-
-    # Create a blank file "yargen_rules.yar"
 
     if not os.path.exists('yargen_rules.yar'):
         with open('yargen_rules.yar', 'w') as f:
@@ -363,7 +346,6 @@ else:
     print(f"{white}Skipping DB update.{white}")
     yarGen_execution(first_time=False)
 
-# Rename
 shutil.move('yargen_rules.yar', 'rules.yar')
 
 execute_command("cp rules.yar ../")
@@ -376,13 +358,12 @@ print(f"{gold}Sending to YARAify Rule Sharing Platform. Please Standby... {white
 
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
-# Clear screen
-os.system('clear')
-print(f"{green}Stage 3/9 (optional){white}")
-#Begin 
-# Set the yaraify API endpoint URL
+
+# Stage 3: YARA Rule Generation and Transmission
+print(f"{green}Stage 3/9 (optional): Generating and Transmitting YARA Rules to YARAify{white}")
+
 def yaraify_transmission():
-    yaraify_api_url = config.get('APIs', 'yaraify_api_url', fallback='https://yaraify-api.abuse.ch/api/v1/')
+    yaraify_api_url = config.get('YARAify', 'yaraify_api_url', fallback='https://yaraify-api.abuse.ch/api/v1/')
 
     create_directory('yaraify')
 
@@ -439,7 +420,6 @@ else:
 # -----------------------------------------------------> END PYTHON3 COMMAND <-----------------------------------------------------
 
 time.sleep(3)
-#execute_command('python3 submit_to_yaraify.py')
 time.sleep(5)
 print(f"{gold}Please Wait...{white}")
 os.chdir(os.path.expanduser('~/mal-parse/malware'))
@@ -448,11 +428,12 @@ os.chdir(os.path.expanduser('~/mal-parse/investigate'))
 time.sleep(3)
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
-#execute_command('./translate.sh
-# Clear screen
+
 os.system('clear')
-print(f"{green}Stage 4/9{white}")
-#Begin 
+
+# Stage 4: Malware Sample Information Query
+print(f"{green}Stage 4/9: Querying Malware Sample Information{white}")
+
 
 API_URL="https://mb-api.abuse.ch/api/v1/"
 REPORT_FILE="report.json"
@@ -470,7 +451,6 @@ def query_sample_info(hash):
     else:
         return response_data
 
-# Read hashes.json and query sample info for each hash
 try:
     with open("hashes.json", 'r') as f:
         hashes = json.load(f)['data']
@@ -484,10 +464,8 @@ current_hash = 1
 print("Starting sample info extraction...")
 print(f"Total hashes: {total_hashes}")
 
-# Create an empty JSON array as the root of the report file
 report = {"query_status": "ok", "data": []}
 
-# Iterate over each hash and call the query_sample_info function
 for hash_info in hashes:
     hash = hash_info['sha256_hash']
     print(f"Progress: {current_hash} / {total_hashes}")
@@ -500,7 +478,6 @@ for hash_info in hashes:
 
 print("Sample info extraction completed.")
 
-# Write the data to the report file
 try:
     with open("report.json", 'w') as f:
         json.dump(report, f, indent=4)
@@ -510,7 +487,6 @@ except Exception as e:
 
 time.sleep(5)
 
-# Read the content from the original report file
 try:
     with open('report.json', 'r') as file:
         report_content = file.read()
@@ -525,7 +501,6 @@ subprocess.run("sed -i 's/]\[/,/g' report.json", shell=True)
 subprocess.run("sed -i '$s/]/]}/' report.json", shell=True)
 subprocess.run(r'''sed -i 's/{\n    "query_status": "ok",\n    "data": \n        \[/\n{\n    "query_status": "ok",\n    "data": /g' report.json''', shell=True)
 
-# Write the formatted report to a new file
 try:
     with open('formatted_report.json', 'w') as file:
         file.write(formatted_report)
@@ -543,31 +518,23 @@ print(f"{gold}Now beginning integration with ELK stack...{white}")
 time.sleep(5)
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
-#execute_command('./elk-parse.sh')
 
-# Clear screen
-os.system('clear')
-print(f"{green}Stage 5/9 (optional){white}")
-#Begin 
+# Stage 5: Sending Data to ElasticSearch
+print(f"{green}Stage 5/9 (optional): Sending Data to ElasticSearch{white}")
+ 
 def send_to_kibana(ip_address, port, file_name):
     print("Please wait...")
-    subprocess.run(["clear"])
     time.sleep(5)
-    # Read the content from the original report file
     os.chdir(os.path.expanduser('~/mal-parse/investigate'))
     
     time.sleep(5)
     print("Transferring now...")
-    # Elasticsearch server configuration
     scheme = 'http'
     host = ip_address
     port = port
     index_name = file_name
+    es = Elasticsearch([f'{scheme}://{host}:{port}'], request_timeout=60, max_retries=10, retry_on_timeout=True)
 
-    # Create an instance of the Elasticsearch client
-    es = Elasticsearch([f'{scheme}://{host}:{port}'], timeout=60, max_retries=10, retry_on_timeout=True)
-
-    # Define the mapping for the intelligence field
     mapping = {
         "properties": {
             "intelligence": {
@@ -589,7 +556,7 @@ def send_to_kibana(ip_address, port, file_name):
         }
     }
 
-    # Create the index with the mapping
+
     es.indices.create(index=index_name, body={"mappings": mapping})
 
     # Directory containing the hashes.json file
@@ -597,21 +564,16 @@ def send_to_kibana(ip_address, port, file_name):
     json_file = 'formatted_report.json'
     json_path = os.path.join(json_dir, json_file)
 
-    # Check if the JSON file exists
     if not os.path.exists(json_path):
         print(f"The JSON file '{json_file}' does not exist.")
         exit(1)
 
-    # Read the content of the JSON file
     with open(json_path, 'r') as file:
         json_content = file.read()
 
-    # Parse the JSON content
     json_data = json.loads(json_content)
 
-    # Extract data from each sample and index it in Elasticsearch
     for sample in json_data['data']:
-        # Extract the fields from the sample
         sha256_hash = sample.get('sha256_hash', '')
         md5_hash = sample.get('md5_hash', '')
         first_seen = sample.get('first_seen', '')
@@ -628,7 +590,7 @@ def send_to_kibana(ip_address, port, file_name):
         delivery_method = sample.get('delivery_method', '')
         intelligence = sample.get('intelligence', {})
 
-        # Prepare the data to be sent to Elasticsearch
+        # Preparing the following data to be sent to Elasticsearch
         document = {
             'sha256_hash': sha256_hash,
             'md5_hash': md5_hash,
@@ -655,53 +617,48 @@ def send_to_kibana(ip_address, port, file_name):
             print(f"Data for sample '{sha256_hash}' indexed successfully.")
         else:
             print(f"Failed to index data for sample '{sha256_hash}'.")
-    print(f"{green}Kibana transmission complete.{white}")
+    print(f"{green}ElasticSearch transmission complete.{white}")
+
 
 if kibana_transmission_choice.lower() == 'y':
     if interactive_mode:
-        ip_address = input("Please enter the IP address of your Kibana instance: ")
+        ip_address = input("Please enter the IP address of your ElasticSearch instance: ")
         port = input("Please enter the port (default is 9200): ") or "9200"
         kibana_file_name = input("Please enter the name of the file (default is 'threat_analysis_grimbinary_todaysdate'): ") or f'threat_analysis_grimbinary_{datetime.now().strftime("%Y-%m-%d")}'
     else:
-        ip_address = config.get('Preferences', 'kibana_ip_address', fallback=None)
-        port = config.get('Preferences', 'kibana_port', fallback=None)
-        kibana_file_name = config.get('Preferences', 'kibana_file_name', fallback=None)
+        ip_address = config.get('Kibana', 'kibana_ip_address', fallback='127.0.0.1')
+        port = config.get('Kibana', 'kibana_port', fallback='9200')
+        kibana_file_name = config.get('Kibana', 'kibana_file_name', fallback=None)
         if kibana_file_name == 'threat_analysis_grimbinary_todaysdate':
             kibana_file_name = f'threat_analysis_grimbinary_{datetime.now().strftime("%Y-%m-%d")}'
 
     send_to_kibana(ip_address, port, kibana_file_name)
 else:
-    print(f"Skipping Kibana transmission...")
+    print(f"Skipping ElasticSearch transmission...")
 
 # -----------------------------------------------------> END PYTHON3 COMMAND <-----------------------------------------------------
 
 time.sleep(10)
-
-# Clear screen
 os.system('clear')
-print(f"{green}Stage 6/9{white}")
-#Begin 
+
+# Stage 6: ThreatFox Transmission
+print(f"{green}Stage 6/9: Transmitting Data to ThreatFox{white}")
 
 def send_to_threatfox(api_key):
     print(f"{gold}Sending files to ThreatFox...{white}")
 
-    # Suppress the InsecureRequestWarning
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    # Prepare HTTPSConnectionPool
+    
     headers = {
       "API-KEY": api_key,
     }
 
     pool = urllib3.HTTPSConnectionPool('threatfox-api.abuse.ch', port=443, maxsize=100, headers=headers, cert_reqs='CERT_NONE', assert_hostname=True)
 
-    # Load the data from the JSON file
     with open('formatted_report.json', 'r') as f:
         data = json.load(f)
-
-    # Iterate over the data and submit each sample to ThreatFox with a progress bar
+   
     for item in tqdm(data['data'], desc='Uploading samples to ThreatFox'):
-        # Set the required fields
         sha256_hash = item['sha256_hash']
         threat_type = "payload"
         ioc_type = 'sha256_hash'
@@ -710,7 +667,6 @@ def send_to_threatfox(api_key):
         malware = ['win.' + tag.lower().replace(' ', '') for tag in tags if tag != 'exe']
         iocs = [sha256_hash]
 
-        # Set the filtered data
         filtered_item = {
             'query': 'submit_ioc',
             'threat_type': threat_type,
@@ -721,11 +677,9 @@ def send_to_threatfox(api_key):
             'iocs': iocs
         }
 
-        # Send the filtered data to ThreatFox using a POST request
         json_data = json.dumps(filtered_item)
         response = pool.request("POST", "/api/v1/", body=json_data)
 
-        # Check if the submission was successful
         if response.status == 200 or response.status == 201:
             print(f'Successfully submitted sample {sha256_hash} to ThreatFox')
         else:
@@ -733,21 +687,17 @@ def send_to_threatfox(api_key):
 
     print(f"{green}Completed ThreatFox transmission.{white}")
 
-    
-    #response_data = response.data.decode("utf-8", "ignore")
-    #print(f'Response data from ThreatFox for sample {sha256_hash}: {response_data}')
 
 if threatfox_transmission_choice.lower() == 'y':
     if interactive_mode:
-        # Ask the user for the API key
         api_key = input("Please enter your API key: ")
     else:
-        # Get the API key from the preferences.conf file
-        api_key = config.get('Preferences', 'threatfox_api_key', fallback=None)
+        api_key = config.get('ThreatFox', 'threatfox_api_key', fallback=None)
 
     send_to_threatfox(api_key)
 else:
     print(f"{gold}Skipping ThreatFox transmission...{white}")
+
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
 
 print(f"{gold}Condensing files so that they can be analyzed with AI... Please wait...{white}")
@@ -755,11 +705,9 @@ time.sleep(5)
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
-# Create the folder to store the sample files
 folder_name = "sample_hashes"
 os.makedirs(folder_name, exist_ok=True)
 
-# Read the report file
 try:
     with open('formatted_report.json', 'r') as f:
         report_content = f.read()
@@ -767,25 +715,23 @@ except Exception as e:
     print(f"Error reading report file: {e}")
     exit(1)
 
-# Load the JSON content
 try:
     report_data = json.loads(report_content)
 except json.JSONDecodeError as e:
     print(f"Error parsing JSON data: {e}")
     exit(1)
 
-# Extract the data from the report_data
 samples = report_data.get('data', [])
 
-# Iterate over each sample
+
 for sample in samples:
     try:
         sha256_hash = sample['sha256_hash']
-        # Create a new file for each sample
+
         file_name = f"{sha256_hash}.json"
         file_path = os.path.join(folder_name, file_name)
         with open(file_path, 'w') as f:
-            # Write the sample to the file
+
             json.dump(sample, f, indent=4)
 
         print(f"Sample {sha256_hash} saved to file: {file_path}")
@@ -796,45 +742,37 @@ for sample in samples:
 print(f"Files have been condensed. Shortening files....")
 
 
-# Function to truncate text to a specified length
 def truncate_text(text, length):
     if len(text) <= length:
         return text
     else:
         return text[:length] + '...'
 
-# Function to convert JSON file to text
 def convert_json_to_text(file_path):
     with open(file_path, 'r') as f:
         json_data = json.load(f)
     return json.dumps(json_data)
 
-# Function to reduce text length to a specified limit
+
 def reduce_text_length(text, limit):
     return truncate_text(text, limit)
 
-# Path to the directory containing sample JSON files
 directory = 'sample_hashes'
 
-# Path to the directory for storing reduced sample files
 output_directory = 'reduced_sample_files'
 
-# Create the output directory if it doesn't exist
 os.makedirs(output_directory, exist_ok=True)
 
-# Iterate over each sample file
+
 for filename in os.listdir(directory):
     if filename.endswith('.json'):
         file_path = os.path.join(directory, filename)
         output_file_path = os.path.join(output_directory, filename[:-5] + '_reduced.txt')
        
-        # Convert JSON file to text
         text = convert_json_to_text(file_path)
        
-        # Reduce text length to around 1600 characters
         reduced_text = reduce_text_length(text, 1600)
        
-        # Save the reduced text to the output file
         with open(output_file_path, 'w') as f:
             f.write(reduced_text)
        
@@ -848,60 +786,63 @@ os.chdir(os.path.expanduser('~/mal-parse/investigate/'))
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
-# Clear screen
+
 os.system('clear')
-print(f"{green}Stage 7/9 (optional){white}")
-#Begin 
-def ai_analysis_execution(api_key, engine_choice, prompt):
-    # Path to the directory containing reduced sample files
+
+# Stage 7: AI Analysis with OpenAI
+print(f"{green}Stage 7/9 (optional): Summarizing Malware Samples with AI Analysis{white}")
+
+def ai_analysis_execution(openai_api_key, engine_choice, prompt):
+
+    openai.api_key = openai_api_key
+
     directory2 = 'reduced_sample_files'
 
-    # Path to the directory for storing AI reports
     output_directory2 = 'ai_report'
 
-    # Create the output directory if it doesn't exist
     os.makedirs(output_directory2, exist_ok=True)
 
-    # Get the total number of sample files
+
     total_files = len([filename for filename in os.listdir(directory2) if filename.endswith('.txt')])
 
-    # Initialize the progress bar
+
     progress_bar = tqdm(total=total_files, unit='file(s)')
 
-    # Iterate over each sample file
+
     for filename in os.listdir(directory2):
         if filename.endswith('.txt'):
             file_path = os.path.join(directory2, filename)
             output_file_path2 = os.path.join(output_directory2, filename[:-4] + '_ai_report.txt')
 
-            # Read the sample file
             with open(file_path, 'r') as f:
                 sample_content = f.read()
 
-            # Generate a summary using ChatGPT API
-            response = openai.Completion.create(
-                engine=engine_choice,
-                prompt = prompt + sample_content,
-                temperature=0.7,
-                max_tokens=800,
-                n=1,
-                stop=None
-            )
+            try:
+                response = openai.Completion.create(
+                    engine=engine_choice,
+                    prompt = prompt + sample_content,
+                    temperature=0.7,
+                    max_tokens=800,
+                    n=1,
+                    stop=None
+                )
+                summary = response.choices[0].text.strip()
 
-            # Get the generated summary from the API response
-            summary = response.choices[0].text.strip()
-
-            # Save the AI report to the output file
+            except Exception as e:
+                print(f"An error occurred while generating the summary: {e}")
+                summary = "Error generating summary."
+        
             with open(output_file_path2, 'w') as f:
                 f.write(summary)
 
-            # Update the progress bar
             progress_bar.set_description(f"Analyzing: {filename}. This will take time.")
             progress_bar.update(1)
 
-    # Close the progress bar
+
     progress_bar.close()
     print("Done.")
+    time.sleep(5)
+    os.system('clear')
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
 
 time.sleep(5)
@@ -909,54 +850,46 @@ print(f"{gold}Please Wait...{white}")
 os.chdir(os.path.expanduser('~/mal-parse/investigate'))
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
-#execute_command('./report.sh')
 
-# Clear screen
-os.system('clear')
-print(f"{green}Stage 8/9 (optional) {white}")
-#Begin 
-def send_to_platform(platform, slack_token=None, slack_channel_id=None, discord_webhook_url=None):
-    if platform.lower() == 'discord':
-        # Create the webhook with your URL
-        discord_webhook = DiscordWebhook(url=discord_webhook_url)
+# Stage 8: Report Transmission
+print(f"{green}Stage 8/9 (optional): Sending Threat Analysis Report{white}")
 
-        # Add a file to send (optional)
-        with open('report.txt', 'rb') as f:
-            discord_webhook.add_file(file=f.read(), filename='report.txt')
+def send_to_platform():
+    if platform_choice == 'y':
+        if platform.lower() == 'discord':
+            from discord_webhook import DiscordWebhook
+            discord_webhook = DiscordWebhook(url=discord_webhook_url)
 
-        # Send the webhook
-        response = discord_webhook.execute()
+            with open('report.txt', 'rb') as f:
+                discord_webhook.add_file(file=f.read(), filename='report.txt')
 
-    elif platform.lower() == 'slack':
-        # Create a client instance
-        client = WebClient(token=slack_token)
-        print("Sending...")
+            response = discord_webhook.execute()
 
-        # Upload the report file
-        try:
-            response = client.files_upload(
-                channels=slack_channel_id,
-                initial_comment="Daily threat analysis brief",
-                file='report.txt'
-            )
-        except SlackApiError as e:
-            print(f"Error sending file: {e}")
+        elif platform.lower() == 'slack':
+            from slack_sdk import WebClient
+            from slack_sdk.errors import SlackApiError
+            client = WebClient(token=slack_token)
+            print("Sending...")
 
-    print(f"{green}Threat report has been sent to your chosen service.{white}")
+            try:
+                response = client.files_upload(
+                    channels=slack_channel_id,
+                    initial_comment="Daily threat analysis brief",
+                    file='report.txt'
+                )
+            except SlackApiError as e:
+                print(f"Error sending file: {e}")
 
-#Begin 
-print(f"{green}Beginning open-source threat analysis...{white}")
+        print(f"{green}Threat report has been sent to your chosen service.{white}")
 
-os.system('clear')
-print(f"{green}Stage 9/9{white}")
+# Stage 9: Threat Analysis Completion
+print(f"{green}Stage 9/9: Beginning Open-source Threat Analysis{white}")
 
-# Path to hashes.json file
 hashes_file_path = 'hashes.json'
 output_directory = 'threat_analysis/'
 vt_api_endpoint = 'https://www.virustotal.com/api/v3/files/{}/behaviour_mitre_trees'
 
-# Check if the user has set a preference for the VirusTotal API key
-vt_api_key = config.get('Preferences', 'vt_api_key', fallback=None)
+vt_api_key = config.get('Virustotal', 'vt_api_key', fallback=None)
 if vt_api_key is None:
     vt_api_key = input("Please enter your VirusTotal API key: ")
 
@@ -995,31 +928,26 @@ with open('report.txt', 'w') as outfile:
         if filename.endswith('.txt'):
             with open(filename) as infile:
                 outfile.write(infile.read())
-# Initialize 
 
-if platform_choice == 'y':
-    send_to_platform(platform, slack_token, slack_channel_id, discord_webhook_url)
+
+send_to_platform()
 
 
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
+
 
 # -----------------------------------------------------> START PYTHON3 COMMANDS HERE <-----------------------------------------------------
 time.sleep(5)
 os.system('clear')
 
 os.chdir(os.path.expanduser('~/mal-parse/investigate/threat_analysis/'))
-#Rename
 if os.path.exists("report.txt"):
     os.rename("report.txt", "new_threats.json")
 
 os.chdir(os.path.expanduser('~/mal-parse/'))
 
-#print(f"{green}Restarting At 8AM 24/UTC.{green}")"
 print(f"{green}Done.{green}")
 print(f"{green}All stages met. Thank you for using Mal-Parse!{green}")
 print(f"{green}To start the dashboard, please navigate to the /admin/ directory and execute 'start-dashboard.py'{green}")
 
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
-
-
-#print(f"{green}Restarting At 8AM 24/UTC.{green}")
