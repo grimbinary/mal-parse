@@ -9,10 +9,7 @@
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
 # Date: 2023-08-10                                                                                                  # 
-# Purpose: To make open source malware detection and analysis more portarable and easy                              #
-# To Do:                                                                                                            #
-# Integrate malware sandbox engine                                                                                  #   
-#                                                                                                                   #
+# Purpose: To make open source malware detection and analysis more portarable and easy                              #                                                                                                                #
 #####################################################################################################################
 
 import os
@@ -41,7 +38,7 @@ from elasticsearch import Elasticsearch
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from discord_webhook import DiscordWebhook
-
+import warnings
 
 gold = Fore.YELLOW
 green = Fore.GREEN
@@ -206,6 +203,8 @@ try:
 
 except json.JSONDecodeError:
     print("An error occurred while decoding the JSON data. Please run the script again.")
+
+warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 # -----------------------------------------------------> END PYTHON3 COMMAND <-------------------------------------------------------------
 
@@ -514,7 +513,7 @@ print("JSON formatting completed.")
 # -----------------------------------------------------> END PYTHON3 COMMAND <-----------------------------------------------------
 
 time.sleep(5)
-print(f"{gold}Now beginning integration with ELK stack...{white}")
+print(f"{gold}Now beginning transmission with Elasticsearch instance...{white}")
 time.sleep(5)
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
@@ -559,7 +558,7 @@ def send_to_kibana(ip_address, port, file_name):
 
     es.indices.create(index=index_name, body={"mappings": mapping})
 
-    # Directory containing the hashes.json file
+    # Your directory containing the hashes.json file
     json_dir = './'
     json_file = 'formatted_report.json'
     json_path = os.path.join(json_dir, json_file)
@@ -645,56 +644,82 @@ os.system('clear')
 print(f"{green}Stage 6/9: Transmitting Data to ThreatFox{white}")
 
 def send_to_threatfox(api_key):
-    print(f"{gold}Sending files to ThreatFox...{white}")
+    print(f"{gold}Preparing and sending data to ThreatFox...{white}")
+    headers = {"API-KEY": api_key}
 
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    
-    headers = {
-      "API-KEY": api_key,
-    }
+    # As of 2024, 02, this is the endpoint
+    url = 'https://threatfox-api.abuse.ch/api/v1/'
 
-    pool = urllib3.HTTPSConnectionPool('threatfox-api.abuse.ch', port=443, maxsize=100, headers=headers, cert_reqs='CERT_NONE', assert_hostname=True)
+    try:
+        with open('hashes.json', 'r') as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        print("Hashes file not found ('hashes.json'). Please ensure it exists and retry.")
+        return
 
-    with open('formatted_report.json', 'r') as f:
-        data = json.load(f)
-   
-    for item in tqdm(data['data'], desc='Uploading samples to ThreatFox'):
-        sha256_hash = item['sha256_hash']
-        threat_type = "payload"
-        ioc_type = 'sha256_hash'
-        confidence_level = 75
+    # For debugging: Container for all submissions to help logging (optional)
+    # submissions = []
+
+    for item in tqdm(data['data'], desc='Processing submissions for ThreatFox'):
+        malware_signature = item.get('signature')
+        if not malware_signature:
+            continue
+
+        formatted_malware_name = f"win.{malware_signature.replace(' ', '')}"
+
+        hash_types = [
+            'sha256_hash',
+            'sha3_384_hash',
+            'sha1_hash',
+            'md5_hash',
+            'imphash',
+            'tlsh',
+        ]
+
         tags = item.get('tags', [])
-        malware = ['win.' + tag.lower().replace(' ', '') for tag in tags if tag != 'exe']
-        iocs = [sha256_hash]
+        for hash_type in hash_types:
+            hash_value = item.get(hash_type)
+            if not hash_value:
+                continue 
 
-        filtered_item = {
-            'query': 'submit_ioc',
-            'threat_type': threat_type,
-            'ioc_type': ioc_type,
-            'malware': malware[:1],
-            'confidence_level': confidence_level,
-            'tags': tags[:2],
-            'iocs': iocs
-        }
+            submission_item = {
+                "query": "submit_ioc",
+                "threat_type": "payload",
+                "ioc_type": hash_type,
+                "malware": formatted_malware_name,
+                "confidence_level": 95,
+                "tags": tags,
+                "iocs": [hash_value]
+            }
+             # For debugging: append submission items
+             # submissions.append(submission_item)
 
-        json_data = json.dumps(filtered_item)
-        response = pool.request("POST", "/api/v1/", body=json_data)
+            response = requests.post(url, headers=headers, json=submission_item, verify=False)
+            if response.status_code not in [200, 201]:
+                print(f"Error submitting {hash_type}: {response.status_code} - {response.text}")
 
-        if response.status == 200 or response.status == 201:
+        if response.status_code in [200, 201]:
             print(f'Successfully submitted sample {sha256_hash} to ThreatFox')
         else:
-            print(f'Error submitting sample {sha256_hash} to ThreatFox: {response.status} {response.reason}')
+            print(f'Error submitting sample {sha256_hash} to ThreatFox: {response.status_code}')
 
     print(f"{green}Completed ThreatFox transmission.{white}")
 
+    # For debugging: Print or save the prepared submissions
+    # with open('threat_fox_submissions.json', 'w') as f:
+    #     json.dump(submissions, f, indent=4)
 
 if threatfox_transmission_choice.lower() == 'y':
+    api_key = None
     if interactive_mode:
-        api_key = input("Please enter your API key: ")
+        api_key = threatfox_api_key if threatfox_api_key else input("Please enter your ThreatFox API key: ")
     else:
         api_key = config.get('ThreatFox', 'threatfox_api_key', fallback=None)
 
-    send_to_threatfox(api_key)
+    if api_key:
+        send_to_threatfox(api_key)
+    else:
+        print(f"{gold}ThreatFox API key not provided. Skipping ThreatFox transmission...{white}")
 else:
     print(f"{gold}Skipping ThreatFox transmission...{white}")
 
