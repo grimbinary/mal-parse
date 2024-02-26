@@ -9,7 +9,10 @@
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
 # Date: 2023-08-10                                                                                                  # 
-# Purpose: To make open source malware detection and analysis more portarable and easy                              #                                                                                                                #
+# Purpose: To make open source malware detection and analysis more portarable and easy                              #
+# To Do:                                                                                                            #
+# Integrate malware sandbox engine                                                                                  #   
+#                                                                                                                   #
 #####################################################################################################################
 
 import os
@@ -665,7 +668,7 @@ def send_to_threatfox(api_key):
         if not malware_signature:
             continue
 
-        formatted_malware_name = f"win.{malware_signature.replace(' ', '')}"
+        formatted_malware_name = f"win.{malware_signature.replace(' ', '').lower()}"
 
         hash_types = [
             'sha256_hash',
