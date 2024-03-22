@@ -188,7 +188,7 @@ os.makedirs("samples", exist_ok=True)
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
 url = "https://mb-api.abuse.ch/api/v1/"
-data = {"query": "get_file_type", "file_type": "exe", "limit": "100"}
+data = {"query": "get_file_type", "file_type": "exe", "limit": "100"} # you can change the amount of samples downloaded here by hundreds
 response = requests.post(url, data=data)
 with open("hashes.json", "w") as file:
     file.write(response.text)
@@ -210,8 +210,6 @@ except json.JSONDecodeError:
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 # -----------------------------------------------------> END PYTHON3 COMMAND <-------------------------------------------------------------
-
-print(f"{white}Running puller.py with samples.json. Saving malicious files to samples directory{white}")
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
@@ -257,7 +255,7 @@ with tqdm(total=num_samples, desc="Downloading", unit="sample") as pbar:
                 pbar.set_postfix({"Progress": f"{index}/{num_samples}"})
                 pbar.update(1)
 
-                print(f"Sample \"{sha256_hash}\" downloaded and unpacked.")
+                print(f"Sample \"{sha256_hash}\" downloaded and unzipped.")
 
             except pyzipper.BadZipFile:
                 print(f"Error: File for hash {sha256_hash} is not a zip file. Skipping.")
@@ -365,54 +363,58 @@ print(f"{gold}Sending to YARAify Rule Sharing Platform. Please Standby... {white
 print(f"{green}Stage 3/9 (optional): Generating and Transmitting YARA Rules to YARAify{white}")
 
 def yaraify_transmission():
-    yaraify_api_url = config.get('YARAify', 'yaraify_api_url', fallback='https://yaraify-api.abuse.ch/api/v1/')
 
-    create_directory('yaraify')
+    try:
+        yaraify_api_url = config.get('YARAify', 'yaraify_api_url', fallback='https://yaraify-api.abuse.ch/api/v1/')
 
-    for file in os.listdir('yaraify'):
-        if file.endswith('.yar'):
-            os.remove(f'yaraify/{file}')
+        create_directory('yaraify')
 
-    with open('rules.yar', 'r') as f:
-        data = f.read()
+        for file in os.listdir('yaraify'):
+            if file.endswith('.yar'):
+                os.remove(f'yaraify/{file}')
 
-    rules = re.findall(r'rule\s+.*?{.*?}', data, re.DOTALL)
+        with open('rules.yar', 'r') as f:
+            data = f.read()
 
-    for i, rule in enumerate(rules):
-        matches = re.findall(r'hash\d*\s*=\s*"([a-fA-F0-9]+)"', rule, re.IGNORECASE)
-        for j, sha256_hash in enumerate(matches):
-            try:
-                with open(f'samples/{sha256_hash}.exe', 'rb') as f:
-                    md5_hash = hashlib.md5(f.read()).hexdigest()
+        rules = re.findall(r'rule\s+.*?{.*?}', data, re.DOTALL)
 
-                rule_uuid = str(uuid.uuid4())
+        for i, rule in enumerate(rules):
+            matches = re.findall(r'hash\d*\s*=\s*"([a-fA-F0-9]+)"', rule, re.IGNORECASE)
+            for j, sha256_hash in enumerate(matches):
+                try:
+                    with open(f'samples/{sha256_hash}.exe', 'rb') as f:
+                        md5_hash = hashlib.md5(f.read()).hexdigest()
 
-                rule = re.sub(r'{', r'\n{', rule, count=1)
+                    rule_uuid = str(uuid.uuid4())
 
-                rule = re.sub(r'(date\s*=\s*"[^"]+")', fr'\1\n      yarahub_license = "CC0 1.0"\n      yarahub_rule_matching_tlp = "TLP:WHITE"\n      yarahub_rule_sharing_tlp = "TLP:GREEN"\n      yarahub_uuid = "{rule_uuid}"\n      yarahub_reference_md5 = "{md5_hash}"', rule)
+                    rule = re.sub(r'{', r'\n{', rule, count=1)
 
-                with open(f'rule_{sha256_hash}.yar', 'w') as f:
-                    f.write(rule)
+                    rule = re.sub(r'(date\s*=\s*"[^"]+")', fr'\1\n      yarahub_license = "CC0 1.0"\n      yarahub_rule_matching_tlp = "TLP:WHITE"\n      yarahub_rule_sharing_tlp = "TLP:GREEN"\n      yarahub_uuid = "{rule_uuid}"\n      yarahub_reference_md5 = "{md5_hash}"', rule)
 
-                if os.path.exists(f'yaraify/rule_{sha256_hash}.yar'):
-                    os.remove(f'yaraify/rule_{sha256_hash}.yar')
+                    with open(f'rule_{sha256_hash}.yar', 'w') as f:
+                        f.write(rule)
 
-                shutil.move(f'rule_{sha256_hash}.yar', 'yaraify/')
-                
-                with open(f'yaraify/rule_{sha256_hash}.yar', 'rb') as f:
-                    response = requests.post(yaraify_api_url, files={'file': f})
+                    if os.path.exists(f'yaraify/rule_{sha256_hash}.yar'):
+                        os.remove(f'yaraify/rule_{sha256_hash}.yar')
 
-                if response.status_code == 200:
-                    print(f'Successfully submitted rule_{sha256_hash}.yar to yaraify')
-                else:
-                    print(f'Error submitting rule_{sha256_hash}.yar to yaraify: {response.text}')
+                    shutil.move(f'rule_{sha256_hash}.yar', 'yaraify/')
 
-                print(f'Upload progress: {i + 1}/{len(rules)}')
-            except FileNotFoundError:
-                print(f"File {sha256_hash}.exe moving to next hash.")
-                continue
+                    with open(f'yaraify/rule_{sha256_hash}.yar', 'rb') as f:
+                        response = requests.post(yaraify_api_url, files={'file': f})
 
-    print(f"{green}Transmission complete.{white}")
+                    if response.status_code == 200:
+                        print(f'Successfully submitted rule_{sha256_hash}.yar to yaraify')
+                    else:
+                        print(f'Error submitting rule_{sha256_hash}.yar to yaraify: {response.text}')
+
+                    print(f'Upload progress: {i + 1}/{len(rules)}')
+                except FileNotFoundError:
+                    print(f"File {sha256_hash}.exe moving to next hash.")
+                    continue
+        print(f"{green}Transmission complete.{white}")
+
+    except Exception as e:
+        print(f"Error in Stage 3: {e}")
 
 if yaraify_transmission_choice.lower() == 'y':
     yaraify_transmission()
@@ -525,100 +527,105 @@ time.sleep(5)
 print(f"{green}Stage 5/9 (optional): Sending Data to ElasticSearch{white}")
  
 def send_to_kibana(ip_address, port, file_name):
-    print("Please wait...")
-    time.sleep(5)
-    os.chdir(os.path.expanduser('~/mal-parse/investigate'))
-    
-    time.sleep(5)
-    print("Transferring now...")
-    scheme = 'http'
-    host = ip_address
-    port = port
-    index_name = file_name
-    es = Elasticsearch([f'{scheme}://{host}:{port}'], request_timeout=60, max_retries=10, retry_on_timeout=True)
+    try:
+        print("Please wait...")
+        time.sleep(5)
+        os.chdir(os.path.expanduser('~/mal-parse/investigate'))
 
-    mapping = {
-        "properties": {
-            "intelligence": {
-                "properties": {
-                    "clamav": {
-                        "type": "keyword"
-                    },
-                    "downloads": {
-                        "type": "integer"
-                    },
-                    "uploads": {
-                        "type": "integer"
-                    },
-                    "mail": {
-                        "type": "keyword"
+        time.sleep(5)
+        print("Transferring now...")
+        scheme = 'http'
+        host = ip_address
+        port = port
+        index_name = file_name
+        es = Elasticsearch([f'{scheme}://{host}:{port}'], request_timeout=60, max_retries=10, retry_on_timeout=True)
+
+        mapping = {
+            "properties": {
+                "intelligence": {
+                    "properties": {
+                        "clamav": {
+                            "type": "keyword"
+                        },
+                        "downloads": {
+                            "type": "integer"
+                        },
+                        "uploads": {
+                            "type": "integer"
+                        },
+                        "mail": {
+                            "type": "keyword"
+                        }
                     }
                 }
             }
         }
-    }
 
 
-    es.indices.create(index=index_name, body={"mappings": mapping})
+        es.indices.create(index=index_name, body={"mappings": mapping})
 
-    # Your directory containing the hashes.json file
-    json_dir = './'
-    json_file = 'formatted_report.json'
-    json_path = os.path.join(json_dir, json_file)
+        # Your directory containing the hashes.json file
+        json_dir = './'
+        json_file = 'formatted_report.json'
+        json_path = os.path.join(json_dir, json_file)
 
-    if not os.path.exists(json_path):
-        print(f"The JSON file '{json_file}' does not exist.")
-        exit(1)
+        if not os.path.exists(json_path):
+            print(f"The JSON file '{json_file}' does not exist.")
+            exit(1)
 
-    with open(json_path, 'r') as file:
-        json_content = file.read()
+        with open(json_path, 'r') as file:
+            json_content = file.read()
 
-    json_data = json.loads(json_content)
+        json_data = json.loads(json_content)
 
-    for sample in json_data['data']:
-        sha256_hash = sample.get('sha256_hash', '')
-        md5_hash = sample.get('md5_hash', '')
-        first_seen = sample.get('first_seen', '')
-        last_seen = sample.get('last_seen', '')
-        file_name = sample.get('file_name', '')
-        file_size = sample.get('file_size', '')
-        file_type_mime = sample.get('file_type_mime', '')
-        file_type = sample.get('file_type', '')
-        reporter = sample.get('reporter', '')
-        origin_country = sample.get('origin_country', '')
-        signature = sample.get('signature', '')
-        tags = sample.get('tags', '')
-        comment = sample.get('comment', '')
-        delivery_method = sample.get('delivery_method', '')
-        intelligence = sample.get('intelligence', {})
+        for sample in json_data['data']:
+            sha256_hash = sample.get('sha256_hash', '')
+            md5_hash = sample.get('md5_hash', '')
+            first_seen = sample.get('first_seen', '')
+            last_seen = sample.get('last_seen', '')
+            file_name = sample.get('file_name', '')
+            file_size = sample.get('file_size', '')
+            file_type_mime = sample.get('file_type_mime', '')
+            file_type = sample.get('file_type', '')
+            reporter = sample.get('reporter', '')
+            origin_country = sample.get('origin_country', '')
+            signature = sample.get('signature', '')
+            tags = sample.get('tags', '')
+            comment = sample.get('comment', '')
+            delivery_method = sample.get('delivery_method', '')
+            intelligence = sample.get('intelligence', {})
 
-        # Preparing the following data to be sent to Elasticsearch
-        document = {
-            'sha256_hash': sha256_hash,
-            'md5_hash': md5_hash,
-            'first_seen': first_seen,
-            'last_seen': last_seen,
-            'file_name': file_name,
-            'file_size': file_size,
-            'file_type_mime': file_type_mime,
-            'file_type': file_type,
-            'reporter': reporter,
-            'origin_country': origin_country,
-            'signature': signature,
-            'tags': tags,
-            'comment': comment,
-            'delivery_method': delivery_method,
-            'intelligence': intelligence
-        }
+            # Preparing the following data to be sent to Elasticsearch
+            document = {
+                'sha256_hash': sha256_hash,
+                'md5_hash': md5_hash,
+                'first_seen': first_seen,
+                'last_seen': last_seen,
+                'file_name': file_name,
+                'file_size': file_size,
+                'file_type_mime': file_type_mime,
+                'file_type': file_type,
+                'reporter': reporter,
+                'origin_country': origin_country,
+                'signature': signature,
+                'tags': tags,
+                'comment': comment,
+                'delivery_method': delivery_method,
+                'intelligence': intelligence
+            }
 
-        # Index the data in Elasticsearch
-        response = es.index(index=index_name, body=document)
+            # Index the data in Elasticsearch
+            response = es.index(index=index_name, body=document)
 
-        # Check the response from Elasticsearch
-        if response['result'] == 'created':
-            print(f"Data for sample '{sha256_hash}' indexed successfully.")
-        else:
-            print(f"Failed to index data for sample '{sha256_hash}'.")
+            # Check the response from Elasticsearch
+            if response['result'] == 'created':
+                print(f"Data for sample '{sha256_hash}' indexed successfully.")
+            else:
+                print(f"Failed to index data for sample '{sha256_hash}'.")
+
+    except Exception as e:
+        print(f"Error in Stage 5: {e}")
+        
     print(f"{green}ElasticSearch transmission complete.{white}")
 
 
@@ -821,54 +828,59 @@ os.system('clear')
 print(f"{green}Stage 7/9 (optional): Summarizing Malware Samples with AI Analysis{white}")
 
 def ai_analysis_execution(openai_api_key, engine_choice, prompt):
+    try:
 
-    openai.api_key = openai_api_key
+        openai.api_key = openai_api_key
 
-    directory2 = 'reduced_sample_files'
+        directory2 = 'reduced_sample_files'
 
-    output_directory2 = 'ai_report'
+        output_directory2 = 'ai_report'
 
-    os.makedirs(output_directory2, exist_ok=True)
-
-
-    total_files = len([filename for filename in os.listdir(directory2) if filename.endswith('.txt')])
+        os.makedirs(output_directory2, exist_ok=True)
 
 
-    progress_bar = tqdm(total=total_files, unit='file(s)')
+        total_files = len([filename for filename in os.listdir(directory2) if filename.endswith('.txt')])
 
 
-    for filename in os.listdir(directory2):
-        if filename.endswith('.txt'):
-            file_path = os.path.join(directory2, filename)
-            output_file_path2 = os.path.join(output_directory2, filename[:-4] + '_ai_report.txt')
-
-            with open(file_path, 'r') as f:
-                sample_content = f.read()
-
-            try:
-                response = openai.Completion.create(
-                    engine=engine_choice,
-                    prompt = prompt + sample_content,
-                    temperature=0.7,
-                    max_tokens=800,
-                    n=1,
-                    stop=None
-                )
-                summary = response.choices[0].text.strip()
-
-            except Exception as e:
-                print(f"An error occurred while generating the summary: {e}")
-                summary = "Error generating summary."
-        
-            with open(output_file_path2, 'w') as f:
-                f.write(summary)
-
-            progress_bar.set_description(f"Analyzing: {filename}. This will take time.")
-            progress_bar.update(1)
+        progress_bar = tqdm(total=total_files, unit='file(s)')
 
 
-    progress_bar.close()
-    print("Done.")
+        for filename in os.listdir(directory2):
+            if filename.endswith('.txt'):
+                file_path = os.path.join(directory2, filename)
+                output_file_path2 = os.path.join(output_directory2, filename[:-4] + '_ai_report.txt')
+
+                with open(file_path, 'r') as f:
+                    sample_content = f.read()
+
+                try:
+                    response = openai.Completion.create(
+                        engine=engine_choice,
+                        prompt = prompt + sample_content,
+                        temperature=0.7,
+                        max_tokens=800,
+                        n=1,
+                        stop=None
+                    )
+                    summary = response.choices[0].text.strip()
+
+                except Exception as e:
+                    print(f"An error occurred while generating the summary: {e}")
+                    summary = "Error generating summary."
+
+                with open(output_file_path2, 'w') as f:
+                    f.write(summary)
+
+                progress_bar.set_description(f"Analyzing: {filename}. This will take time.")
+                progress_bar.update(1)
+
+
+        progress_bar.close()
+        print("Done.")
+
+    except Exception as e:
+        print(f"Error in Stage 7: {e}")
+
     time.sleep(5)
     os.system('clear')
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
