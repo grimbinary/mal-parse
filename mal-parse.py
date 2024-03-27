@@ -8,8 +8,8 @@
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2023-08-10                                                                                                  # 
-# Purpose: To make open source malware detection and analysis more portarable and easy                              #
+# Date: 2024-03-25                                                                                                  # 
+# Purpose: To make open source malware detection and analysis more portarable and easy using Python 3               #
 # To Do:                                                                                                            #
 # Integrate malware sandbox engine                                                                                  #   
 #                                                                                                                   #
@@ -42,6 +42,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from discord_webhook import DiscordWebhook
 import warnings
+import difflib 
 
 gold = Fore.YELLOW
 green = Fore.GREEN
@@ -68,7 +69,6 @@ else:
         print("Running in interactive mode.")
     else:
         print("Running in non-interactive mode due to setting in preferences.conf.")
-
 
 def get_user_choice(prompt):
     while True:
@@ -97,6 +97,22 @@ def create_directory(directory):
         print(f"Directory {directory} created.")
     else:
         print(f"Directory {directory} already exists.")
+
+def handle_malpedia_file(source_directory, target_directory, filename):
+    source_file_path = os.path.expanduser(os.path.join(source_directory, filename))
+    target_file_path = os.path.expanduser(os.path.join(target_directory, filename))
+    if os.path.exists(target_file_path):
+        print("Malpedia file is present in the investigate folder. Moving on.")
+    elif os.path.exists(source_file_path):
+        print("Moving the Malpedia file to the investigate directory.")
+        subprocess.run(['mv', source_file_path, target_file_path], check=True)
+    else:
+        print("Please download the malpedia24.txt file from @grimbinary GitHub to proceed with ThreatFox transmission. If you want to disable this, please check 'n' in the preferences.conf.")
+
+source_dir = "~/mal-parse"
+target_dir = "~/mal-parse/investigate"
+filename = "malpedia24.txt"
+
 
 if interactive_mode:
     db_update = get_user_choice("Would you like to update the DB? (y/n) -> ")
@@ -184,6 +200,8 @@ create_directory('investigate')
 
 os.chdir('malware/')
 os.makedirs("samples", exist_ok=True)
+handle_malpedia_file(source_dir, target_dir, filename)
+
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
@@ -660,6 +678,17 @@ def send_to_threatfox(api_key):
     # As of 2024, 02, this is the endpoint
     url = 'https://threatfox-api.abuse.ch/api/v1/'
 
+    with open('malpedia24.txt', 'r') as ml_file:
+        proper_malware_names = [line.strip().lower() for line in ml_file.readlines()]
+
+    def correct_malware_name(malware_signature):
+        malware_signature_lower = malware_signature.lower().replace('_', '')
+        corrected_name = difflib.get_close_matches(malware_signature_lower, proper_malware_names, n=1, cutoff=0.1)
+        corrected_name = corrected_name[0] if corrected_name else malware_signature_lower
+        if not corrected_name.startswith("win."):
+            corrected_name = "win." + corrected_name
+        return corrected_name.replace(' ', '_').lower()
+
     try:
         with open('hashes.json', 'r') as file:
             data = json.load(file)
@@ -667,57 +696,40 @@ def send_to_threatfox(api_key):
         print("Hashes file not found ('hashes.json'). Please ensure it exists and retry.")
         return
 
-    # For debugging: Container for all submissions to help logging (optional)
-    # submissions = []
+    ioc_types = ["sha1_hash", "sha256_hash", "sha512_hash", "md5_hash"]
 
     for item in tqdm(data['data'], desc='Processing submissions for ThreatFox'):
         malware_signature = item.get('signature')
-        if not malware_signature:
+        if not malware_signature or malware_signature.lower() == "unknown":
             continue
+        formatted_malware_name = correct_malware_name(malware_signature)
 
-        formatted_malware_name = f"win.{malware_signature.replace(' ', '').lower()}"
-
-        hash_types = [
-            'sha256_hash',
-            'sha3_384_hash',
-            'sha1_hash',
-            'md5_hash',
-            'imphash',
-            'tlsh',
-        ]
-
-        tags = item.get('tags', [])
-        for hash_type in hash_types:
-            hash_value = item.get(hash_type)
+        for ioc_type in ioc_types:
+            hash_value = item.get(ioc_type)
             if not hash_value:
+                continue
+
+            submission_data = {
+                'query': 'submit_ioc',
+                'threat_type': "payload",
+                'ioc_type': ioc_type,
+                'malware': formatted_malware_name,
+                'confidence_level': 95,
+                'comment': f"{malware_signature}", 
+                'anonymous': 0,
+                'iocs': [hash_value],
+            }
+
+            print(f"\nPreparing to submit the following data to ThreatFox:")
+            print(json.dumps(submission_data, indent=4))
+            response = requests.post(url, headers=headers, json=submission_data, verify=False)
+            if response.status_code not in [200, 201]:
+                print(f"Error submitting {ioc_type}: {response.status_code} - {response.text}")
                 continue 
 
-            submission_item = {
-                "query": "submit_ioc",
-                "threat_type": "payload",
-                "ioc_type": hash_type,
-                "malware": formatted_malware_name,
-                "confidence_level": 95,
-                "tags": tags,
-                "iocs": [hash_value]
-            }
-             # For debugging: append submission items
-             # submissions.append(submission_item)
-
-            response = requests.post(url, headers=headers, json=submission_item, verify=False)
-            if response.status_code not in [200, 201]:
-                print(f"Error submitting {hash_type}: {response.status_code} - {response.text}")
-
-        if response.status_code in [200, 201]:
-            print(f'Successfully submitted sample {sha256_hash} to ThreatFox')
-        else:
-            print(f'Error submitting sample {sha256_hash} to ThreatFox: {response.status_code}')
+            print(f'Successfully submitted {ioc_type} for {formatted_malware_name} to ThreatFox')
 
     print(f"{green}Completed ThreatFox transmission.{white}")
-
-    # For debugging: Print or save the prepared submissions
-    # with open('threat_fox_submissions.json', 'w') as f:
-    #     json.dump(submissions, f, indent=4)
 
 if threatfox_transmission_choice.lower() == 'y':
     api_key = None
@@ -988,6 +1000,6 @@ os.chdir(os.path.expanduser('~/mal-parse/'))
 
 print(f"{green}Done.{green}")
 print(f"{green}All stages met. Thank you for using Mal-Parse!{green}")
-print(f"{green}To start the dashboard, please navigate to the /admin/ directory and execute 'start-dashboard.py'{green}")
+print(f"{green}To start the dashboard, please navigate to the /admin/ directory and execute 'python3 start-dashboard.py'{green}")
 
 # -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
