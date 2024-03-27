@@ -903,8 +903,8 @@ os.chdir(os.path.expanduser('~/mal-parse/investigate'))
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
-# Stage 8: Report Transmission
-print(f"{green}Stage 8/9 (optional): Sending Threat Analysis Report{white}")
+# Stage 9: Report Transmission
+print(f"{green}Stage 9/9 (optional): Sending Threat Analysis Report{white}")
 
 def send_to_platform():
     if platform_choice == 'y':
@@ -934,8 +934,8 @@ def send_to_platform():
 
         print(f"{green}Threat report has been sent to your chosen service.{white}")
 
-# Stage 9: Threat Analysis Completion
-print(f"{green}Stage 9/9: Beginning Open-source Threat Analysis{white}")
+# Stage 8: Threat Analysis Completion
+print(f"{green}Stage 8/9: Beginning Open-source Threat Analysis{white}")
 
 hashes_file_path = 'hashes.json'
 output_directory = 'threat_analysis/'
