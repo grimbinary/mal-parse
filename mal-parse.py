@@ -11,15 +11,13 @@
 # Date: 2024-11-16                                                                                                  # 
 # Purpose: To make open source malware analysis more portable and easy using Python 3                               #
 # To Do:                                                                                                            #
-# Make state                                                                                                        #   
-#                                                                                                                   #
+# Maintenance                                                                                                       #  
 #####################################################################################################################
 
 import os
 import subprocess
 import time
 import zipfile
-from colorama import Fore
 import requests
 import argparse
 import json
@@ -32,17 +30,20 @@ import hashlib
 import uuid
 import sys
 import signal
+import warnings
+import difflib
+import configparser
+
+from colorama import Fore
 from halo import Halo
 from tqdm import tqdm
-import configparser
 from datetime import datetime
 from subprocess import run
 from elasticsearch import Elasticsearch
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from discord_webhook import DiscordWebhook
-import warnings
-import difflib 
+from requests.exceptions import ReadTimeout, ConnectionError
 
 gold = Fore.YELLOW
 green = Fore.GREEN
@@ -242,7 +243,6 @@ def check_sha256(s):
 ZIP_PASSWORD = b'infected'
 headers = {'API-KEY': ''}
 
-# Hardcoded input file name
 input_file = 'samples.json'
 
 try:
@@ -253,31 +253,54 @@ except FileNotFoundError:
     sys.exit(1) 
 
 num_samples = len(data)
+
+MAX_RETRIES = 3
+
 with tqdm(total=num_samples, desc="Downloading", unit="sample") as pbar:
     for index, sample in enumerate(data, start=1):
         sha256_hash = sample.get('sha256_hash')
-        if sha256_hash:
-            response = requests.post('https://mb-api.abuse.ch/api/v1/', data={'query': 'get_file', 'sha256_hash': sha256_hash}, timeout=15, headers=headers, allow_redirects=True)
+        if not sha256_hash:
+            continue
 
-            if 'file_not_found' in response.text:
-                print(f"Error: File not found for hash {sha256_hash}")
-                continue
-
-            with open(f"samples/{sha256_hash}.zip", 'wb') as file:
-                file.write(response.content)
-
+        for attempt in range(MAX_RETRIES):
             try:
-                with pyzipper.AESZipFile(f"samples/{sha256_hash}.zip") as zf:
-                    zf.pwd = ZIP_PASSWORD
-                    zf.extractall("samples")
+                response = requests.post(
+                    'https://mb-api.abuse.ch/api/v1/',
+                    data={'query': 'get_file', 'sha256_hash': sha256_hash},
+                    timeout=15,
+                    headers=headers,
+                    allow_redirects=True
+                )
 
-                pbar.set_postfix({"Progress": f"{index}/{num_samples}"})
-                pbar.update(1)
+                if 'file_not_found' in response.text:
+                    print(f"Error: File not found for hash {sha256_hash}")
+                    break  # No point in retrying if the file doesn't exist
 
-                print(f"Sample \"{sha256_hash}\" downloaded and unzipped.")
+                with open(f"samples/{sha256_hash}.zip", 'wb') as file:
+                    file.write(response.content)
 
-            except pyzipper.BadZipFile:
-                print(f"Error: File for hash {sha256_hash} is not a zip file. Skipping.")
+                try:
+                    with pyzipper.AESZipFile(f"samples/{sha256_hash}.zip") as zf:
+                        zf.pwd = ZIP_PASSWORD
+                        zf.extractall("samples")
+
+                    pbar.set_postfix({"Progress": f"{index}/{num_samples}"})
+                    pbar.update(1)
+
+                    print(f"Sample \"{sha256_hash}\" downloaded and unzipped.")
+                    break  # Exit retry loop on success
+
+                except pyzipper.BadZipFile:
+                    print(f"Error: File for hash {sha256_hash} is not a zip file. Skipping.")
+                    break
+
+            except (ReadTimeout, ConnectionError) as e:
+                print(f"Attempt {attempt + 1} failed for hash {sha256_hash}: {e}")
+                if attempt + 1 == MAX_RETRIES:
+                    print(f"Skipping hash {sha256_hash} after {MAX_RETRIES} failed attempts.")
+                    break  # Skip after max retries
+                else:
+                    time.sleep(5)
 
 print("Download completed. Please wait.")
 
