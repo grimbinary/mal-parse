@@ -8,10 +8,10 @@
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2024-03-25                                                                                                  # 
-# Purpose: To make open source malware detection and analysis more portarable and easy using Python 3               #
+# Date: 2024-11-16                                                                                                  # 
+# Purpose: To make open source malware analysis more portable and easy using Python 3                               #
 # To Do:                                                                                                            #
-# Integrate malware sandbox engine                                                                                  #   
+# Make state                                                                                                        #   
 #                                                                                                                   #
 #####################################################################################################################
 
@@ -48,7 +48,7 @@ gold = Fore.YELLOW
 green = Fore.GREEN
 white = Fore.WHITE
 
-#init
+# Init
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Mal-Parse: the helpful malware analysis toolkit.")
     parser.add_argument('--non-interactive', action='store_true', help='run the script in non-interactive mode by reading off the settings stored in the preferences.conf file')
@@ -77,6 +77,7 @@ def get_user_choice(prompt):
             return user_choice.lower()
         else:
             print("Not a valid option. Please enter 'y' or 'n'.")
+
 
 def execute_command(command):
     subprocess.run(command, shell=True)
@@ -117,7 +118,7 @@ filename = "malpedia24.txt"
 if interactive_mode:
     db_update = get_user_choice("Would you like to update the DB? (y/n) -> ")
     yaraify_transmission_choice = get_user_choice("Would you like to send your YARA rules to YARAify? (y/n) -> ")
-    kibana_transmission_choice = get_user_choice("Would you like to send your data to ElasticSearch? (y/n) -> ") # We are obviously sending this to elasticsearch but kibana is faster to spell
+    kibana_transmission_choice = get_user_choice("Would you like to send your data to ElasticSearch? (y/n) -> ") # We are obviously sending this to elasticsearch but kibana is faster to spell. sorry.
     threatfox_transmission_choice = get_user_choice("Would you like to send your data to ThreatFox? (y/n) -> ")
     threatfox_api_key = input("Please enter your ThreatFox API key: ") if threatfox_transmission_choice.lower() == 'y' else None
     vt_api_key = input("Please enter your VirusTotal API key so that you can receive TTP analysis based on the samples: ")
