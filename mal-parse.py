@@ -1,17 +1,18 @@
-# __   __  _______  ___             _______  _______  ______    _______  _______ 
-#|  |_|  ||   _   ||   |           |       ||   _   ||    _ |  |       ||       |
-#|       ||  |_|  ||   |     ____  |    _  ||  |_|  ||   | ||  |  _____||    ___|
-#|       ||       ||   |    |____| |   |_| ||       ||   |_||_ | |_____ |   |___ 
-#|       ||       ||   |___        |    ___||       ||    __  ||_____  ||    ___|
-#| ||_|| ||   _   ||       |       |   |    |   _   ||   |  | | _____| ||   |___ 
-#|_|   |_||__| |__||_______|       |___|    |__| |__||___|  |_||_______||_______|
+#  __   __  _______  ___             _______  _______  ______    _______  _______ 
+# |  |_|  ||   _   ||   |           |       ||   _   ||    _ |  |       ||       |
+# |       ||  |_|  ||   |     ____  |    _  ||  |_|  ||   | ||  |  _____||    ___|
+# |       ||       ||   |    |____| |   |_| ||       ||   |_||_ | |_____ |   |___ 
+# |       ||       ||   |___        |    ___||       ||    __  ||_____  ||    ___|
+# | ||_|| ||   _   ||       |       |   |    |   _   ||   |  | | _____| ||   |___ 
+# |_|   |_||__| |__||_______|       |___|    |__| |__||___|  |_||_______||_______|
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2024-11-16                                                                                                  # 
+# Date: 2024-12-01                                                                                                  # 
 # Purpose: To make open source malware analysis more portable and easy using Python 3                               #
 # To Do:                                                                                                            #
-# Maintenance                                                                                                       #  
+#                                                                                                                   #   
+#                                                                                                                   #
 #####################################################################################################################
 
 import os
@@ -480,28 +481,28 @@ os.system('clear')
 # Stage 4: Malware Sample Information Query
 print(f"{green}Stage 4/9: Querying Malware Sample Information{white}")
 
-
-API_URL="https://mb-api.abuse.ch/api/v1/"
-REPORT_FILE="report.json"
+API_URL = "https://mb-api.abuse.ch/api/v1/"
+REPORT_FILE = "report.json"
 
 def query_sample_info(hash):
+    """
+    Queries the malware database API for information on a given hash.
+    If the query fails, returns an empty dictionary.
+    """
     print(f"Querying sample info for hash: {hash}")
-    response = requests.post(API_URL, data={"query": "get_info", "hash": hash})
     try:
+        response = requests.post(API_URL, data={"query": "get_info", "hash": hash}, timeout=10)
+        response.raise_for_status()  # Check for HTTP errors
         response_data = response.json().get('data', {})
-    except json.JSONDecodeError:
-        print(f"Warning: Received invalid JSON response for hash: {hash}")
-        return {}
-    if not response_data:
-        return {}
-    else:
         return response_data
-
+    except requests.exceptions.RequestException as e:
+        print(f"Warning: Error querying hash {hash}: {e}")
+        return {}
 try:
     with open("hashes.json", 'r') as f:
         hashes = json.load(f)['data']
-except json.JSONDecodeError:
-    print("Error: hashes.json is not valid JSON.")
+except (json.JSONDecodeError, FileNotFoundError) as e:
+    print(f"Error: Could not load hashes.json: {e}")
     exit(1)
 
 total_hashes = len(hashes)
@@ -514,12 +515,17 @@ report = {"query_status": "ok", "data": []}
 
 for hash_info in hashes:
     hash = hash_info['sha256_hash']
-    print(f"Progress: {current_hash} / {total_hashes}")
+    print(f"Progress: {current_hash}/{total_hashes}")
     report_data = query_sample_info(hash)
-    if isinstance(report_data, list):
-        report['data'].extend(report_data)
+    
+    if not report_data:
+        print(f"Skipping hash {hash} due to query failure or no data found.")
     else:
-        report['data'].append(report_data)
+        if isinstance(report_data, list):
+            report['data'].extend(report_data)
+        else:
+            report['data'].append(report_data)
+    
     current_hash += 1
 
 print("Sample info extraction completed.")
@@ -533,6 +539,7 @@ except Exception as e:
 
 time.sleep(5)
 
+# Load the report for formatting
 try:
     with open('report.json', 'r') as file:
         report_content = file.read()
@@ -540,9 +547,8 @@ except Exception as e:
     print(f"Error reading report file: {e}")
     exit(1)
 
-# Replace "][" with ","
-formatted_report = report_content.replace("        ],\n        [", ",").replace(": [[",": [" ).replace("    'data': \n [", " 'data' :\n").replace("            } \n       ]       ]\n}", "  }\n]\n}")
-
+formatted_report = report_content.replace("        ],\n        [", ",").replace(": [[", ": [").replace(
+    "    'data': \n [", " 'data' :\n").replace("            } \n       ]       ]\n}", "  }\n]\n}")
 subprocess.run("sed -i 's/]\[/,/g' report.json", shell=True)
 subprocess.run("sed -i '$s/]/]}/' report.json", shell=True)
 subprocess.run(r'''sed -i 's/{\n    "query_status": "ok",\n    "data": \n        \[/\n{\n    "query_status": "ok",\n    "data": /g' report.json''', shell=True)
@@ -555,6 +561,7 @@ except Exception as e:
     exit(1)
 
 print("JSON formatting completed.")
+
 
 
 # -----------------------------------------------------> END PYTHON3 COMMAND <-----------------------------------------------------
