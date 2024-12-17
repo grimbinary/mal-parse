@@ -8,11 +8,8 @@
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2024-12-01                                                                                                  # 
-# Purpose: To make open source malware analysis more portable and easy using Python 3                               #
-# To Do:                                                                                                            #
-#                                                                                                                   #   
-#                                                                                                                   #
+# Date: 2024-12-16                                                                                                  # 
+# Purpose: To make open source malware analysis more portable and easy using Python 3                               #                                                                                                            #
 #####################################################################################################################
 
 import os
@@ -966,6 +963,7 @@ def send_to_platform():
         print(f"{green}Threat report has been sent to your chosen service.{white}")
 
 # Stage 8: Threat Analysis Completion
+# Stage 8: Threat Analysis Completion
 print(f"{green}Stage 8/9: Beginning Open-source Threat Analysis{white}")
 
 hashes_file_path = 'hashes.json'
@@ -988,18 +986,31 @@ for sample in hashes_data['data']:
 
     print(f"Performing threat analysis for sample: {sha256_hash}")
 
-    url = vt_api_endpoint.format(sha256_hash)
-    headers = {'x-apikey': vt_api_key }
+    try:
+        url = vt_api_endpoint.format(sha256_hash)
+        headers = {'x-apikey': vt_api_key}
 
-    response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=15)
 
-    with open(output_file, 'w') as f:
-        f.write(f"Sample: {signature} : {sha256_hash}\n\n")
-        f.write(response.text)
+        if response.status_code != 200:
+            print(f"Failed to retrieve data for {sha256_hash}: {response.status_code} {response.reason}")
+            continue
 
-    print(f"Threat analysis result saved to: {output_file}")
+        with open(output_file, 'w') as f:
+            f.write(f"Sample: {signature} : {sha256_hash}\n\n")
+            f.write(response.text)
+
+        print(f"Threat analysis result saved to: {output_file}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error querying VirusTotal for hash {sha256_hash}: {e}")
+        continue
+    except Exception as e:
+        print(f"Unexpected error processing {sha256_hash}: {e}")
+        continue
 
 print(f"{green}Threat analysis completed.{white}")
+
 
 print(f"{white}Please Wait...{white}")
 
