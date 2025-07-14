@@ -8,8 +8,8 @@
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2024-12-16                                                                                                  # 
-# Purpose: To make open source malware analysis more portable and easy using Python 3                               #                                                                                                            #
+# Date: 2024-14-07                                                                                                  # 
+# Purpose: To make open source malware analysis more portable and easy using Python 3                               #
 #####################################################################################################################
 
 import os
@@ -42,10 +42,14 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from discord_webhook import DiscordWebhook
 from requests.exceptions import ReadTimeout, ConnectionError
+from urllib3.exceptions import InsecureRequestWarning
 
 gold = Fore.YELLOW
 green = Fore.GREEN
 white = Fore.WHITE
+
+urllib3.disable_warnings(category=InsecureRequestWarning)
+
 
 # Init
 if __name__ == "__main__":
@@ -205,27 +209,37 @@ handle_malpedia_file(source_dir, target_dir, filename)
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
-url = "https://mb-api.abuse.ch/api/v1/"
-data = {"query": "get_file_type", "file_type": "exe", "limit": "100"} # you can change the amount of samples downloaded here by hundreds
-response = requests.post(url, data=data)
-with open("hashes.json", "w") as file:
-    file.write(response.text)
+mb_api_key = config.get('MalwareBazaar', 'mb_api_key', fallback='').strip()
+if not mb_api_key:
+    print("No MalwareBazaar API key found in preferences.conf (section [MalwareBazaar]).")
+    sys.exit(1)
 
-if os.path.exists("index.html"):
-    os.rename("index.html", "hashes.json")
+HEADERS_MB = {'Auth-Key': mb_api_key}
+
+MB_URL = "https://mb-api.abuse.ch/api/v1/"
+payload = {"query": "get_file_type", "file_type": "exe", "limit": "100"}  # change limit as you like
+
+session = requests.Session()
+session.mount("https://", requests.adapters.HTTPAdapter(max_retries=3))
 
 try:
-    with open("hashes.json") as file:
-        data = json.load(file)
-    samples = [{"sha256_hash": item["sha256_hash"]} for item in data["data"]]
-    with open("samples.json", "w") as file:
-        json.dump(samples, file)
-    time.sleep(15)
+    resp = session.post(MB_URL, data=payload, headers=HEADERS_MB, timeout=60, verify=False)
+    resp.raise_for_status()
+    mb_json = resp.json()
+except (requests.exceptions.RequestException, ValueError) as err:
+    print(f"MalwareBazaar request failed: {err}")
+    print(f"Response preview:\n{resp.text[:500] if 'resp' in locals() else '<no response>'}")
+    sys.exit(1)
 
-except json.JSONDecodeError:
-    print("An error occurred while decoding the JSON data. Please run the script again.")
+with open("hashes.json", "w") as fh:
+    json.dump(mb_json, fh, indent=2)
 
-warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+samples = [{"sha256_hash": item["sha256_hash"]} for item in mb_json.get("data", [])]
+with open("samples.json", "w") as fh:
+    json.dump(samples, fh, indent=2)
+
+time.sleep(15)
+
 
 # -----------------------------------------------------> END PYTHON3 COMMAND <-------------------------------------------------------------
 
@@ -239,66 +253,64 @@ def check_sha256(s):
     return str(s)
 
 ZIP_PASSWORD = b'infected'
-headers = {'API-KEY': ''}
 
-input_file = 'samples.json'
+session = requests.Session()
+session.mount("https://", requests.adapters.HTTPAdapter(max_retries=3))
 
-try:
-    with open(input_file) as json_file:
-        data = json.load(json_file)
-except FileNotFoundError:
-    print("Mal-Parse ran into an unknown error. Please try again.")
-    sys.exit(1) 
-
+with open('samples.json') as jf:
+    data = json.load(jf)
 num_samples = len(data)
-
-MAX_RETRIES = 3
 
 with tqdm(total=num_samples, desc="Downloading", unit="sample") as pbar:
     for index, sample in enumerate(data, start=1):
         sha256_hash = sample.get('sha256_hash')
         if not sha256_hash:
+            pbar.update(1)
             continue
 
-        for attempt in range(MAX_RETRIES):
-            try:
-                response = requests.post(
-                    'https://mb-api.abuse.ch/api/v1/',
-                    data={'query': 'get_file', 'sha256_hash': sha256_hash},
-                    timeout=15,
-                    headers=headers,
-                    allow_redirects=True
-                )
+        try:
+            resp = session.post(
+                'https://mb-api.abuse.ch/api/v1/',
+                data={'query': 'get_file', 'sha256_hash': sha256_hash},
+                headers=HEADERS_MB,
+                timeout=60,
+                verify=False,
+                allow_redirects=True
+            )
 
-                if 'file_not_found' in response.text:
-                    print(f"Error: File not found for hash {sha256_hash}")
-                    break  # No point in retrying if the file doesn't exist
+            if resp.status_code != 200:
+                print(f"HTTP {resp.status_code} for {sha256_hash}; skipping")
+                pbar.update(1)
+                continue
 
-                with open(f"samples/{sha256_hash}.zip", 'wb') as file:
-                    file.write(response.content)
-
-                try:
-                    with pyzipper.AESZipFile(f"samples/{sha256_hash}.zip") as zf:
-                        zf.pwd = ZIP_PASSWORD
-                        zf.extractall("samples")
-
-                    pbar.set_postfix({"Progress": f"{index}/{num_samples}"})
-                    pbar.update(1)
-
-                    print(f"Sample \"{sha256_hash}\" downloaded and unzipped.")
-                    break  # Exit retry loop on success
-
-                except pyzipper.BadZipFile:
-                    print(f"Error: File for hash {sha256_hash} is not a zip file. Skipping.")
-                    break
-
-            except (ReadTimeout, ConnectionError) as e:
-                print(f"Attempt {attempt + 1} failed for hash {sha256_hash}: {e}")
-                if attempt + 1 == MAX_RETRIES:
-                    print(f"Skipping hash {sha256_hash} after {MAX_RETRIES} failed attempts.")
-                    break  # Skip after max retries
+            if resp.content[:2] != b'PK':
+                if b'file_not_found' in resp.content:
+                    print(f"File not found for {sha256_hash}")
                 else:
-                    time.sleep(5)
+                    preview = resp.content[:120].decode("utf-8", "ignore")
+                    print(f"Unexpected response for {sha256_hash}: {preview}")
+                pbar.update(1)
+                continue
+
+            zip_path = f"samples/{sha256_hash}.zip"
+            with open(zip_path, 'wb') as f:
+                f.write(resp.content)
+
+            try:
+                with pyzipper.AESZipFile(zip_path) as zf:
+                    zf.pwd = ZIP_PASSWORD
+                    zf.extractall("samples")
+            except pyzipper.BadZipFile:
+                print(f"{sha256_hash}: corrupt zip, skipping")
+                pbar.update(1)
+                continue
+
+            pbar.update(1)
+
+        except requests.exceptions.RequestException as e:
+            print(f"{sha256_hash}: download error {e}")
+            pbar.update(1)
+            continue
 
 print("Download completed. Please wait.")
 
@@ -478,88 +490,89 @@ os.system('clear')
 # Stage 4: Malware Sample Information Query
 print(f"{green}Stage 4/9: Querying Malware Sample Information{white}")
 
-API_URL = "https://mb-api.abuse.ch/api/v1/"
+API_URL     = "https://mb-api.abuse.ch/api/v1/"
 REPORT_FILE = "report.json"
+HEADERS_MB  = {"Auth-Key": mb_api_key}
 
-def query_sample_info(hash):
-    """
-    Queries the malware database API for information on a given hash.
-    If the query fails, returns an empty dictionary.
-    """
-    print(f"Querying sample info for hash: {hash}")
+session = requests.Session()
+session.mount("https://", requests.adapters.HTTPAdapter(max_retries=3))
+
+def query_sample_info(sha256_hash):
+    print(f"Querying sample info for hash: {sha256_hash}")
+    payload = {"query": "get_info", "hash": sha256_hash}
     try:
-        response = requests.post(API_URL, data={"query": "get_info", "hash": hash}, timeout=10)
-        response.raise_for_status()  # Check for HTTP errors
-        response_data = response.json().get('data', {})
-        return response_data
+        resp = session.post(API_URL, data=payload, headers=HEADERS_MB, timeout=30, verify=False)
+        resp.raise_for_status()
+        json_data = resp.json()
+        if json_data.get("query_status") != "ok":
+            return {}
+        return json_data.get("data", {})
     except requests.exceptions.RequestException as e:
-        print(f"Warning: Error querying hash {hash}: {e}")
+        print(f"Warning: Error querying hash {sha256_hash}: {e}")
         return {}
+
 try:
-    with open("hashes.json", 'r') as f:
-        hashes = json.load(f)['data']
+    with open("hashes.json", "r") as fh:
+        hashes = json.load(fh)["data"]
 except (json.JSONDecodeError, FileNotFoundError) as e:
     print(f"Error: Could not load hashes.json: {e}")
-    exit(1)
+    sys.exit(1)
 
 total_hashes = len(hashes)
-current_hash = 1
-
-print("Starting sample info extraction...")
+print("Starting sample info extraction…")
 print(f"Total hashes: {total_hashes}")
 
 report = {"query_status": "ok", "data": []}
 
-for hash_info in hashes:
-    hash = hash_info['sha256_hash']
-    print(f"Progress: {current_hash}/{total_hashes}")
-    report_data = query_sample_info(hash)
-    
-    if not report_data:
-        print(f"Skipping hash {hash} due to query failure or no data found.")
-    else:
-        if isinstance(report_data, list):
-            report['data'].extend(report_data)
+for idx, hash_info in enumerate(hashes, start=1):
+    sha256_hash = hash_info["sha256_hash"]
+    print(f"Progress: {idx}/{total_hashes}")
+    sample_info = query_sample_info(sha256_hash)
+    if sample_info:
+        if isinstance(sample_info, list):
+            report["data"].extend(sample_info)
         else:
-            report['data'].append(report_data)
-    
-    current_hash += 1
+            report["data"].append(sample_info)
+    else:
+        print(f"Skipping hash {sha256_hash} due to query failure or no data found.")
+    time.sleep(1)
 
 print("Sample info extraction completed.")
 
-try:
-    with open("report.json", 'w') as f:
-        json.dump(report, f, indent=4)
-except Exception as e:
-    print(f"Error writing to report file: {e}")
-    exit(1)
+with open(REPORT_FILE, "w") as fh:
+    json.dump(report, fh, indent=4)
 
 time.sleep(5)
 
-# Load the report for formatting
 try:
-    with open('report.json', 'r') as file:
+    with open(REPORT_FILE, "r") as file:
         report_content = file.read()
 except Exception as e:
     print(f"Error reading report file: {e}")
-    exit(1)
+    sys.exit(1)
 
-formatted_report = report_content.replace("        ],\n        [", ",").replace(": [[", ": [").replace(
-    "    'data': \n [", " 'data' :\n").replace("            } \n       ]       ]\n}", "  }\n]\n}")
-subprocess.run("sed -i 's/]\[/,/g' report.json", shell=True)
+formatted_report = (
+    report_content
+    .replace("        ],\n        [", ",")
+    .replace(": [[", ": [")
+    .replace("    'data': \n [", " 'data' :\n")
+    .replace("            } \n       ]       ]\n}", "  }\n]\n}")
+)
+subprocess.run("sed -i 's/]\\[/,/g' report.json", shell=True)
 subprocess.run("sed -i '$s/]/]}/' report.json", shell=True)
-subprocess.run(r'''sed -i 's/{\n    "query_status": "ok",\n    "data": \n        \[/\n{\n    "query_status": "ok",\n    "data": /g' report.json''', shell=True)
+subprocess.run(
+    r'''sed -i 's/{\n    "query_status": "ok",\n    "data": \n        \[/\n{\n    "query_status": "ok",\n    "data": /g' report.json''',
+    shell=True
+)
 
 try:
-    with open('formatted_report.json', 'w') as file:
+    with open("formatted_report.json", "w") as file:
         file.write(formatted_report)
 except Exception as e:
     print(f"Error writing to formatted_report.json: {e}")
-    exit(1)
+    sys.exit(1)
 
 print("JSON formatting completed.")
-
-
 
 # -----------------------------------------------------> END PYTHON3 COMMAND <-----------------------------------------------------
 
