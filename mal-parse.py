@@ -114,11 +114,11 @@ def handle_malpedia_file(source_directory, target_directory, filename):
         print("Moving the Malpedia file to the investigate directory.")
         subprocess.run(['mv', source_file_path, target_file_path], check=True)
     else:
-        print("Please download the malpedia24.txt file from @grimbinary GitHub to proceed with ThreatFox transmission. If you want to disable this, please check 'n' in the preferences.conf.")
+        print("Please download the malpedia25.txt file from @grimbinary GitHub to proceed with ThreatFox transmission. If you want to disable this, please check 'n' in the preferences.conf.")
 
 source_dir = "~/mal-parse"
 target_dir = "~/mal-parse/investigate"
-filename = "malpedia24.txt"
+filename = "malpedia25.txt"
 
 
 if interactive_mode:
@@ -727,8 +727,8 @@ def send_to_threatfox(api_key: str):
 
     url = "https://threatfox-api.abuse.ch/api/v1/"
 
-    # Malpedia as of 2024
-    with open("malpedia24.txt", "r") as ml_file:
+    # Malpedia as of 2025
+    with open("malpedia25.txt", "r") as ml_file:
         proper_malware_names = [line.strip().lower() for line in ml_file.readlines()]
 
     def correct_malware_name(sig: str) -> str:
