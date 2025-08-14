@@ -8,8 +8,11 @@
 
 #####################################################################################################################
 # Author: Grim : @grimbinary                                                                                        #
-# Date: 2024-14-07                                                                                                  # 
+# Date: 2025-08-13                                                                                                  # 
 # Purpose: To make open source malware analysis more portable and easy using Python 3                               #
+# To Do:                                                                                                            #
+#                                                                                                                   #   
+#                                                                                                                   #
 #####################################################################################################################
 
 import os
@@ -712,72 +715,83 @@ os.system('clear')
 # Stage 6: ThreatFox Transmission
 print(f"{green}Stage 6/9: Transmitting Data to ThreatFox{white}")
 
-def send_to_threatfox(api_key):
+def send_to_threatfox(api_key: str):
     print(f"{gold}Preparing and sending data to ThreatFox...{white}")
-    headers = {"API-KEY": api_key}
 
-    # As of 2024, 02, this is the endpoint
-    url = 'https://threatfox-api.abuse.ch/api/v1/'
+    # Fixed header here
+    headers = {"Auth-Key": api_key}
+    sess = globals().get("session")
+    if sess is None:
+        sess = requests.Session()
+        sess.mount("https://", requests.adapters.HTTPAdapter(max_retries=3))
 
-    with open('malpedia24.txt', 'r') as ml_file:
+    url = "https://threatfox-api.abuse.ch/api/v1/"
+
+    # Malpedia as of 2024
+    with open("malpedia24.txt", "r") as ml_file:
         proper_malware_names = [line.strip().lower() for line in ml_file.readlines()]
 
-    def correct_malware_name(malware_signature):
-        malware_signature_lower = malware_signature.lower().replace('_', '')
-        corrected_name = difflib.get_close_matches(malware_signature_lower, proper_malware_names, n=1, cutoff=0.1)
-        corrected_name = corrected_name[0] if corrected_name else malware_signature_lower
-        if not corrected_name.startswith("win."):
-            corrected_name = "win." + corrected_name
-        return corrected_name.replace(' ', '_').lower()
-
-    try:
-        with open('hashes.json', 'r') as file:
-            data = json.load(file)
-    except FileNotFoundError:
-        print("Hashes file not found ('hashes.json'). Please ensure it exists and retry.")
-        return
+    def correct_malware_name(sig: str) -> str:
+        sig_l = sig.lower().replace("_", "")
+        best = difflib.get_close_matches(sig_l, proper_malware_names, n=1, cutoff=0.1)
+        name = best[0] if best else sig_l
+        if not name.startswith("win."):
+            name = "win." + name
+        return name.replace(" ", "_").lower()
+    with open("hashes.json", "r") as fh:
+        data = json.load(fh)
 
     ioc_types = ["sha1_hash", "sha256_hash", "sha512_hash", "md5_hash"]
 
-    for item in tqdm(data['data'], desc='Processing submissions for ThreatFox'):
-        malware_signature = item.get('signature')
-        if not malware_signature or malware_signature.lower() == "unknown":
+    for item in tqdm(data["data"], desc="Processing submissions for ThreatFox"):
+        sig = item.get("signature")
+        if not sig or sig.lower() == "unknown":
             continue
-        formatted_malware_name = correct_malware_name(malware_signature)
+        family = correct_malware_name(sig)
 
-        for ioc_type in ioc_types:
-            hash_value = item.get(ioc_type)
-            if not hash_value:
+        for itype in ioc_types:
+            hval = item.get(itype)
+            if not hval:
                 continue
 
-            submission_data = {
-                'query': 'submit_ioc',
-                'threat_type': "payload",
-                'ioc_type': ioc_type,
-                'malware': formatted_malware_name,
-                'confidence_level': 95,
-                'comment': f"{malware_signature}", 
-                'anonymous': 0,
-                'iocs': [hash_value],
+            submission = {
+                "query": "submit_ioc",
+                "threat_type": "payload",
+                "ioc_type": itype,
+                "malware": family,
+                "confidence_level": 95,
+                "comment": sig,
+                "anonymous": 0,
+                "iocs": [hval],
             }
 
-            print(f"\nPreparing to submit the following data to ThreatFox:")
-            print(json.dumps(submission_data, indent=4))
-            response = requests.post(url, headers=headers, json=submission_data, verify=False)
-            if response.status_code not in [200, 201]:
-                print(f"Error submitting {ioc_type}: {response.status_code} - {response.text}")
-                continue 
+            print("\nSubmitting:")
+            print(json.dumps(submission, indent=4))
 
-            print(f'Successfully submitted {ioc_type} for {formatted_malware_name} to ThreatFox')
+            resp = sess.post(
+                url,
+                headers=headers,
+                json=submission,
+                timeout=60,
+                verify=False,
+                allow_redirects=True,
+            )
+
+            if resp.status_code not in (200, 201):
+                print(f"Error ({resp.status_code}) for {itype}: {resp.text[:200]}")
+                continue
+
+            print(f"✔ {itype} for {family} submitted successfully")
 
     print(f"{green}Completed ThreatFox transmission.{white}")
 
-if threatfox_transmission_choice.lower() == 'y':
-    api_key = None
+
+# Decide whether to run ThreatFox stage
+if threatfox_transmission_choice.lower() == "y":
     if interactive_mode:
-        api_key = threatfox_api_key if threatfox_api_key else input("Please enter your ThreatFox API key: ")
+        api_key = threatfox_api_key or input("Please enter your ThreatFox API key: ")
     else:
-        api_key = config.get('ThreatFox', 'threatfox_api_key', fallback=None)
+        api_key = config.get("ThreatFox", "threatfox_api_key", fallback=None)
 
     if api_key:
         send_to_threatfox(api_key)
@@ -786,10 +800,11 @@ if threatfox_transmission_choice.lower() == 'y':
 else:
     print(f"{gold}Skipping ThreatFox transmission...{white}")
 
-# -----------------------------------------------------> END PYTHON3 COMMANDS <-----------------------------------------------------
-
 print(f"{gold}Condensing files so that they can be analyzed with AI... Please wait...{white}")
 time.sleep(5)
+
+
+# -----------------------------------------------------> END PYTHON3 COMMAND <-----------------------------------------------------
 
 # -----------------------------------------------------> ENTER PYTHON3 COMMANDS HERE <-----------------------------------------------------
 
